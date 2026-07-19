@@ -26,6 +26,7 @@ The only thing you need is 5hours video file of `Bandersnatch` episode, Drag & d
 
 \*subtitle available, If you want add another language subtitle, tell me.
 
+- run locally over http, not `file://` — opening `index.html` directly breaks two things: subtitles (.vtt tracks won't load in chrome/edge) and progress saving (`localStorage` is sandboxed/blocked on `file://` origin). serve the folder instead, e.g. `python -m http.server 8000` from the repo root, then open `http://localhost:8000/index.html`
 - to change subtitle : right click on video , enable show controls , after that . on bottom,right you see menu icon (3 vertical dot) then you can subtitle section
 - Note : after change subtitle , disable show controls ,if dont disable it on full screen video,you cant see option selector
 
