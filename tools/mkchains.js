@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const repo = path.resolve(__dirname, '..');
 const planArg = process.argv[2];
@@ -9,6 +10,29 @@ if (!planArg) {
 }
 const d = JSON.parse(fs.readFileSync(planArg, 'utf8'));
 const rep = d.repairs || [];
+
+// choice windows: steps are stamped with the segment start (seeking straight to the
+// choice would skip its state impression), so say when the buttons actually appear.
+const ctx = { console, JSON, Math, Object, Array };
+vm.createContext(ctx);
+for (const f of ['assets/SegmentMap.js', 'assets/bandersnatch.js', 'assets/choices/en.js']) {
+  vm.runInContext(fs.readFileSync(path.join(repo, f), 'utf8'), ctx, { filename: f });
+}
+const bv = ctx.bandersnatch.videos['80988062'].interactiveVideoMoments.value;
+const en = ctx.en || {};
+const fmtMs = (v) => {
+  const s = Math.round(v / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0');
+};
+function choiceAt(seg, label) {
+  for (const m of bv.momentsBySegment[seg] || []) {
+    if (!m.choices) continue;
+    for (const c of m.choices) {
+      if (((en[seg] && en[seg][c.id]) || c.text || c.id) === label) return fmtMs(m.startMs);
+    }
+  }
+  return null;
+}
 
 const chains = [];
 let cur = null;
@@ -27,10 +51,15 @@ const fmtStep = (s) => {
   if (p.length !== 3) return s;
   const [head, act, land] = p;
   const dest = (/lands in (\S+)/.exec(land) || [])[1] || land;
+  const seg = head.split(/\s+/)[1] || '';
   let action;
-  if (/^CLICK:/.test(act)) action = 'CLICK "' + act.slice(7) + '"';
-  else if (/do nothing/.test(act)) action = /segment group/.test(act) ? 'let play (segment group)' : 'let it play';
-  else action = 'CLICK "' + act + '"';   // repair steps carry the bare choice text
+  if (/do nothing/.test(act)) {
+    action = /segment group/.test(act) ? 'let play (segment group)' : 'let it play';
+  } else {
+    const label = /^CLICK:/.test(act) ? act.slice(7) : act;
+    const at = choiceAt(seg, label);
+    action = 'CLICK "' + label + '"' + (at ? ' [choice at ' + at + ']' : '');
+  }
   return head + ' → ' + action + ' → ' + dest;
 };
 
@@ -49,6 +78,6 @@ fs.writeFileSync(path.join(repo, 'ROUTE.md'),
   '# bandersnatch 100% route\n\n' +
   d.summary.segmentsBefore + ' -> ' + d.summary.coveredAfter + ' / ' + d.summary.totalSegments +
   ' segments, ' + d.summary.choicePointsAfter + ' / ' + d.summary.totalChoicePoints + ' choice points.\n\n' +
-  'A chain starts with SEEK (hash jump, writes no progress). Everything after the first hop is normal playback: watch until the listed timestamp, then either click the named choice or let it play. Timestamps are absolute video time.\n\n' +
+  'A chain starts with SEEK (hash jump, writes no progress). Everything after the first hop is normal playback: watch until the listed timestamp, then either click the named choice or let it play. Timestamps are absolute video time and mark the **start of the segment** — seek there, then keep watching: the buttons appear later, at the `[choice at H:MM:SS]` marker (seeking straight to that moment would skip its state impression).\n\n' +
   txt + '\n');
 console.log('chains', chains.length, '-> ROUTE.md + tools/chains.txt');

@@ -60,6 +60,11 @@ rules the route follows:
    is what makes their flag combination enterable.
 4. the video clock jumps between segments (8L ends 55:28 → next hop starts 4:33:45 → the one
    after that is back at 36:01). that's normal, those are segment-group hops.
+5. a step's timestamp is the **segment start**, not the moment the buttons appear — the choice
+   window is usually near the segment's end (often 1–90s later) and is printed as
+   `[choice at H:MM:SS]`. never "fix" this by seeking straight to the choice: `momentStart`
+   drops that moment's state impression when you seek into it, so you'd land in the segment
+   with the wrong flags. seek to the segment start and watch in.
 
 ## ceiling: 249 / 250
 
