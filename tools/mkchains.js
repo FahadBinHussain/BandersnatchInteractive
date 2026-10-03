@@ -34,12 +34,22 @@ function choiceAt(seg, label) {
   return null;
 }
 
+// a segment's first frame is also the previous segment's last frame: seeking there can make
+// the player treat you as the outgoing segment and fire *its* choice. land a few seconds in.
+function seekTime(seg) {
+  const s = ctx.SegmentMap.segments[seg];
+  let t = s.startTimeMs + 5000;
+  const moments = (bv.momentsBySegment[seg] || []).map((m) => m.startMs).filter((x) => x > 0);
+  if (moments.length) t = Math.min(t, Math.max(s.startTimeMs + 1000, Math.min(...moments) - 3000));
+  return fmtMs(Math.min(t, s.endTimeMs - 1000));
+}
+
 const chains = [];
 let cur = null;
 for (const l of d.playbook) {
   const jump = /^JUMP to (\S+)/.exec(l.start);
   if (!cur || jump) { if (cur) chains.push(cur); cur = { start: jump ? jump[1] : null, steps: [], covers: [] }; }
-  if (jump) cur.steps.push('SEEK ' + jump[1]);
+  if (jump) cur.steps.push('SEEK ' + jump[1] + ' at ' + seekTime(jump[1]));
   for (const s of l.steps) cur.steps.push(s);
   cur.covers.push(...l.covers);
 }
@@ -78,6 +88,6 @@ fs.writeFileSync(path.join(repo, 'ROUTE.md'),
   '# bandersnatch 100% route\n\n' +
   d.summary.segmentsBefore + ' -> ' + d.summary.coveredAfter + ' / ' + d.summary.totalSegments +
   ' segments, ' + d.summary.choicePointsAfter + ' / ' + d.summary.totalChoicePoints + ' choice points.\n\n' +
-  'A chain starts with SEEK (hash jump, writes no progress). Everything after the first hop is normal playback: watch until the listed timestamp, then either click the named choice or let it play. Timestamps are absolute video time and mark the **start of the segment** — seek there, then keep watching: the buttons appear later, at the `[choice at H:MM:SS]` marker (seeking straight to that moment would skip its state impression).\n\n' +
+  'A chain starts with SEEK <segment> at <time> (hash jump, writes no progress). The seek time sits a few seconds INSIDE the segment: the first frame of a segment is also the last frame of the previous one, and seeking exactly there can make the player treat you as the outgoing segment and fire its choice. Everything after the first hop is normal playback: watch until the listed timestamp, then either click the named choice or let it play. Timestamps are absolute video time and mark the **start of the segment** — then keep watching: the buttons appear later, at the `[choice at H:MM:SS]` marker (seeking straight to that moment would skip its state impression).\n\n' +
   txt + '\n');
 console.log('chains', chains.length, '-> ROUTE.md + tools/chains.txt');

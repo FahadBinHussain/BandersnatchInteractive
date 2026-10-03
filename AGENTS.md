@@ -51,7 +51,10 @@ node tools/mkchains.js C:\tmp\plan.json     # writes ROUTE.md + tools/chains.txt
 
 rules the route follows:
 
-1. each chain starts with `SEEK` because the seek itself writes nothing; after that it's pure
+1. each chain starts with `SEEK <seg> at <time>` because the seek itself writes nothing; the
+   time is a few seconds **inside** the segment (a segment's first frame is also the previous
+   segment's last frame — seeking exactly there can make the player treat you as the outgoing
+   segment and fire *its* choice, sending you somewhere else entirely). after that it's pure
    playback — no more seeking until the next chain.
 2. **setups run 1 → 7, setup 7 last.** setups 1, 2 and 7 start at `1A` / 0:00, and the intro's
    reset moment wipes state flags — so the last setup run decides the flag state everything
