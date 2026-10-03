@@ -1,9 +1,3 @@
-# bandersnatch 100% route
-
-103 -> 249 / 250 segments, 145 / 174 choice points.
-
-A chain starts with SEEK (hash jump, writes no progress). Everything after the first hop is normal playback: watch until the listed timestamp, then either click the named choice or let it play. Timestamps are absolute video time.
-
 chain 1 [covers: 8B, 3X, SS15, R4, 3N, 5RA, 5AD2, 5AF, 8Q]
    SEEK 3X  →  28:18  3X → CLICK "TAKE THEM" → 8B  →  28:58  8B → let play (segment group) → SS15  →  30:03  SS15 → CLICK "FOLLOW COLIN" → R4  →  45:50  R4 → let it play → 3M  →  46:16  3M → CLICK "YES" → 3N  →  49:43  3N → CLICK "STEFAN" → 8L  →  54:13  8L → let play (segment group) → SS18  →  4:33:44  SS18 → CLICK "GO BACK" → 3Vx  →  36:00  3Vx → CLICK "HIT DESK" → 3Z  →  36:33  3Z → CLICK "PICK UP FAMILY PHOTO" → 3AC2  →  59:11  3AC2 → CLICK "'WHITE BEAR' GLYPH" → ZMB  →  3:01:25  ZMB → let it play → 5VA  →  1:09:15  5VA → CLICK "BURY BODY" → 5RA  →  3:47:27  5RA → let play (segment group) → 5AD2  →  4:00:46  5AD2 → CLICK "NO IDEA" → 5AF  →  1:05:03  5AF → let play (segment group) → 8Q
 chain 2 [covers: SS20, ZQ, 5SA, 5AE, 8Qa]
