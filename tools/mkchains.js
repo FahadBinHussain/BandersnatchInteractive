@@ -34,14 +34,38 @@ function choiceAt(seg, label) {
   return null;
 }
 
-// a segment's first frame is also the previous segment's last frame: seeking there can make
-// the player treat you as the outgoing segment and fire *its* choice. land a few seconds in.
+// two constraints on where a seek may land:
+//  (a) scripts.js only treats a jump as a seek when it moves >= 2000ms — landing within 2s of
+//      the outgoing segment makes the player run *its* transition instead (that is how a
+//      3:32:03 -> 3:32:04 nudge sent ZQ's "pick up family photo" to 3AC2 at 59:12);
+//  (b) an impression moment that starts inside the segment gets skipped if the seek lands on
+//      or past it (momentStart(m, seeked=true) drops impressionData).
+// choice-only moments are fine to land in: addChoices still runs, so the buttons appear.
 function seekTime(seg) {
   const s = ctx.SegmentMap.segments[seg];
-  let t = s.startTimeMs + 5000;
-  const moments = (bv.momentsBySegment[seg] || []).map((m) => m.startMs).filter((x) => x > 0);
-  if (moments.length) t = Math.min(t, Math.max(s.startTimeMs + 1000, Math.min(...moments) - 3000));
-  return fmtMs(Math.min(t, s.endTimeMs - 1000));
+  const start = s.startTimeMs;
+  let t = start + 3000;
+  for (const m of bv.momentsBySegment[seg] || []) {
+    if (m.startMs <= start || !m.impressionData) continue;
+    if (m.startMs - 500 < t) t = m.startMs - 500;
+  }
+  if (t < start + 2000) {
+    console.error(`WARN ${seg}: seek ${fmtMs(t)} is under 2s past the segment start — jump in from somewhere far away or the outgoing segment will fire its transition`);
+  }
+  if (s.endTimeMs) t = Math.min(t, s.endTimeMs - 1000);
+  return fmtMs(t);
+}
+
+// raw plan steps are "HH:MM:SS SEG → action → dest"; the head is the segment start, but the
+// line opens with the seek time, so keep them in sync instead of showing two different times.
+function fmtSeq(raw) {
+  const out = raw.map(fmtStep);
+  const sk = /^SEEK (\S+) at (\S+)$/.exec(raw[0] || '');
+  if (sk && raw[1]) {
+    const head = raw[1].split(/\s*→\s*/)[0];
+    if (head.split(/\s+/)[1] === sk[1]) out[1] = out[1].replace(head, head.replace(/^\S+/, sk[2]));
+  }
+  return out;
 }
 
 const chains = [];
@@ -76,11 +100,14 @@ const fmtStep = (s) => {
 const lines = [];
 chains.forEach((c, i) => {
   lines.push(`chain ${i + 1} [covers: ${[...new Set(c.covers)].join(', ')}]`);
-  lines.push('   ' + c.steps.map(fmtStep).join('  →  '));
+  lines.push('   ' + fmtSeq(c.steps).join('  →  '));
 });
 lines.push('');
 lines.push(`STATE SETUP - ${rep.length} of these. Run them 1 -> 7, setup 7 last (they start at 1A and wipe state flags, so the last one run decides the flag state later chains expect).`);
-rep.forEach((r, i) => lines.push(`   setup ${i + 1} -> ends in ${r.into}: ` + r.steps.map(fmtStep).join('  →  ')));
+rep.forEach((r, i) => {
+  const seg = r.steps[0].split(/\s*→\s*/)[0].split(/\s+/)[1];
+  lines.push(`   setup ${i + 1} -> ends in ${r.into}: ` + fmtSeq(['SEEK ' + seg + ' at ' + seekTime(seg), ...r.steps]).join('  →  '));
+});
 const txt = lines.join('\n');
 
 fs.writeFileSync(path.join(repo, 'tools', 'chains.txt'), txt);
@@ -88,6 +115,6 @@ fs.writeFileSync(path.join(repo, 'ROUTE.md'),
   '# bandersnatch 100% route\n\n' +
   d.summary.segmentsBefore + ' -> ' + d.summary.coveredAfter + ' / ' + d.summary.totalSegments +
   ' segments, ' + d.summary.choicePointsAfter + ' / ' + d.summary.totalChoicePoints + ' choice points.\n\n' +
-  'A chain starts with SEEK <segment> at <time> (hash jump, writes no progress). The seek time sits a few seconds INSIDE the segment: the first frame of a segment is also the last frame of the previous one, and seeking exactly there can make the player treat you as the outgoing segment and fire its choice. Everything after the first hop is normal playback: watch until the listed timestamp, then either click the named choice or let it play. Timestamps are absolute video time and mark the **start of the segment** — then keep watching: the buttons appear later, at the `[choice at H:MM:SS]` marker (seeking straight to that moment would skip its state impression).\n\n' +
+  'A chain starts with SEEK <segment> at <time> (hash jump, writes no progress). The seek time sits a few seconds INSIDE the segment: the first frame of a segment is also the last frame of the previous one, and seeking exactly there can make the player treat you as the outgoing segment and fire its choice. Same trap if a seek moves less than 2 seconds: scripts.js only counts a jump of >= 2000ms as a seek, so a 1s nudge runs the outgoing segment transition instead — always jump from far away, never nudge. Everything after the first hop is normal playback: watch until the listed timestamp, then either click the named choice or let it play. Timestamps are absolute video time and mark the **start of the segment** — then keep watching: the buttons appear later, at the `[choice at H:MM:SS]` marker (seeking straight to that moment would skip its state impression).\n\n' +
   txt + '\n');
 console.log('chains', chains.length, '-> ROUTE.md + tools/chains.txt');
