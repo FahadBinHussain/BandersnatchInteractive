@@ -29,8 +29,8 @@ const fmtStep = (s) => {
   const dest = (/lands in (\S+)/.exec(land) || [])[1] || land;
   let action;
   if (/^CLICK:/.test(act)) action = 'CLICK "' + act.slice(7) + '"';
-  else if (/segment group/.test(act)) action = 'let play (segment group)';
-  else action = 'let it play';
+  else if (/do nothing/.test(act)) action = /segment group/.test(act) ? 'let play (segment group)' : 'let it play';
+  else action = 'CLICK "' + act + '"';   // repair steps carry the bare choice text
   return head + ' → ' + action + ' → ' + dest;
 };
 

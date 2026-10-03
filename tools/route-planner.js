@@ -5,7 +5,7 @@ const path = require('path');
 const repo = path.resolve(__dirname, '..');
 const lsArg = process.argv[2];
 if (!lsArg) {
-  console.error('usage: node tools/route-planner.js <localStorage-dump.json> > plan.json');
+  console.error('usage: node tools/route-planner.js <localStorage-dump.json> [TARGET_SEGMENT] > plan.json');
   console.error('dump it from the real save on http://127.0.0.1:8000 (see AGENTS.md)');
   process.exit(1);
 }
@@ -186,7 +186,7 @@ const covered = new Set();
 const bc = {};
 for (const [k, v] of Object.entries(ls0)) { if (!k.startsWith('breadcrumb_')) continue; bc[k.slice(11)] = v; covered.add(k.slice(11)); if (v) covered.add(v); }
 let fresh = new Set(allSegs.filter((s) => !covered.has(s)));
-const TARGET = process.argv[2] || null;
+const TARGET = process.argv[3] || null;
 if (TARGET) {
   if (!fresh.has(TARGET)) { console.log(JSON.stringify({ alreadyCovered: TARGET, summary: { segmentsBefore: allSegs.length - fresh.size } })); process.exit(0); }
   fresh = new Set([TARGET]);
