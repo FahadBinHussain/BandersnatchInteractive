@@ -42,6 +42,9 @@
 	<script src="assets/choices/fr.js"></script>
 	<script src="assets/SegmentMap.js"></script>
 	<script src="assets/scripts.js"></script>
+	<script src="route-data.js"></script>
+	<script src="route-console.js" defer></script>
+	<script src="progress-tracker.js" defer></script>
 	<script>
 		// keep localizable strings out of scripts.js
 		function askReset() {
@@ -118,6 +121,9 @@
 								<li><kbd>&uarr;</kbd> / <kbd>&darr;</kbd> - Speed up / slow down playback</li>
 								<li><kbd>J</kbd> / <kbd>L</kbd> - Seek back / forward 10 seconds</li>
 								<li><kbd>K</kbd> or <kbd>Space</kbd> - Toggle play and pause</li>
+							<li><kbd>C</kbd> - Route console (all chains + setups, click a step to jump, live checkmarks)</li>
+							<li><kbd>N</kbd> - Jump to the next pending route step</li>
+							<li><kbd>`</kbd> - Progress overlay (segments / choice points)</li>
 							</ul>
 						</div>
 					</div>
