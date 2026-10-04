@@ -87,7 +87,9 @@ panic.
 - `route-console.js` — press **C** for the panel: every setup + chain, live checkmarks off
   `breadcrumb_*` (re-read from the save every 1s, timestamp in the stats row proves it). a row
   that is still pending shows the exact missing segment in red (`needs 3AL`) and the setup meta
-  lists what the save lacks, so "why is this pending" is always on screen. **N** jumps to the
+  lists what the save lacks, so "why is this pending" is always on screen. a `SEEK` step counts
+  as done once the step after it landed — seeking writes nothing and breadcrumb values are
+  write-once, so the seek target itself often never appears. **N** jumps to the
   next pending step. clicking any step
   seeks the player to that step's seek-safe time (segment start +3s, clamped before interior
   impression moments). a seek writes no progress, so jumping mid-route only moves the picture —

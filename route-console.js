@@ -195,12 +195,23 @@
       const covered = coveredSet();
       let chainDoneCount = 0, setupDoneCount = 0, chainTotal = DATA.chains.length, setupTotal = DATA.setups.length;
 
-      // ticks one row-set; returns the targets that are still missing from the save
+      // ticks one row-set; returns the targets that are still missing from the save.
+      // a seek step is special: seeking writes nothing, so its segment only ever shows up as
+      // the *value* of the next segment's breadcrumb (and breadcrumbs are write-once, so an
+      // older route can leave that value stale forever). treat it as started as soon as the
+      // step after it landed.
       const applySteps = (kind, it) => {
         const missing = [];
+        const flags = it.steps.map((st) => {
+          const t = st.k === 'seek' ? st.seg : st.into;
+          return !!t && covered.has(t);
+        });
+        for (let i = it.steps.length - 2; i >= 0; i--) {
+          if (it.steps[i].k === 'seek' && !flags[i] && flags[i + 1]) flags[i] = true;
+        }
         it.steps.forEach((st, i) => {
           const target = st.k === 'seek' ? st.seg : st.into;
-          const sdone = !!target && covered.has(target);
+          const sdone = flags[i];
           const li = list.querySelector('li.rc-step[data-kind="' + kind + '"][data-n="' + it.n + '"][data-i="' + i + '"]');
           if (li) li.classList.toggle('rc-step-done', sdone);
           const why = list.querySelector('[data-why="' + kind + '-' + it.n + '-' + i + '"]');
