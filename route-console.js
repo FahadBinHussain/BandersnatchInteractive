@@ -85,6 +85,11 @@
     'li.rc-step .rc-b i{color:#6d8f86;font-style:normal}',
     'li.rc-step.rc-step-done .rc-b{color:#5c7d75;text-decoration:line-through;text-decoration-color:#1c6b53}',
     'li.rc-step.rc-step-done .rc-mark{background:#2ee6a8;border-color:#2ee6a8;color:#04140f;animation:rc-pop .45s cubic-bezier(.2,.9,.3,1.5)}',
+    'li.rc-step .rc-why{color:#ff6b6b;font-size:11px;white-space:nowrap;flex:0 0 auto;animation:rc-blink .9s ease-in-out infinite}',
+    'li.rc-step.rc-step-done .rc-why{display:none}',
+    '@keyframes rc-blink{0%,100%{opacity:1}50%{opacity:.35}}',
+    '.rc-meta .rc-need{color:#ff6b6b}',
+    '#rc-stats .rc-live{color:#2ee6a8;font-size:11px;letter-spacing:.03em}',
     '#rc-panel footer{padding:8px 14px;border-top:1px solid #133630;color:#5c7d75;font-size:11px}',
     '#rc-panel footer kbd{background:#0e2621;border:1px solid #1c4d41;border-radius:4px;padding:1px 5px}',
     '#rc-toast{position:fixed;left:50%;bottom:74px;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:rgba(6,20,16,.96);',
@@ -103,6 +108,7 @@
   let prevChainDone = new Set();
   let prevStepDone = new Set();
   let toastTimer = 0;
+  let lastErr = '';
 
   function toast(msg, err) {
     toastEl.textContent = msg;
@@ -156,7 +162,8 @@
           '<li class="rc-step" data-kind="' + kind + '" data-n="' + it.n + '" data-i="' + si + '">' +
           '<span class="rc-mark">&#10003;</span>' +
           '<span class="rc-t">' + fmt(st.at) + '</span>' +
-          '<span class="rc-b">' + stepLabel(st) + '</span></li>').join('') +
+          '<span class="rc-b">' + stepLabel(st) + '</span>' +
+          '<span class="rc-why" data-why="' + kind + '-' + it.n + '-' + si + '"></span></li>').join('') +
         '</ol></details>';
     }).join('');
 
@@ -184,63 +191,82 @@
 
   function refresh() {
     if (!DATA) return;
-    const covered = coveredSet();
-    let chainDoneCount = 0, setupDoneCount = 0, chainTotal = 0, setupTotal = 0;
+    try {
+      const covered = coveredSet();
+      let chainDoneCount = 0, setupDoneCount = 0, chainTotal = DATA.chains.length, setupTotal = DATA.setups.length;
 
-    DATA.chains.forEach((c) => {
-      const hits = c.covers.filter((x) => covered.has(x)).length;
-      const done = hits === c.covers.length;
-      chainTotal++; if (done) chainDoneCount++;
-      const key = 'chain-' + c.n;
-      const mark = list.querySelector('.rc-mark[data-chain="' + key + '"]');
-      const meta = list.querySelector('[data-meta="' + key + '"]');
-      const box = list.querySelector('details[data-kind="chain"][data-n="' + c.n + '"]');
-      if (mark) mark.classList.toggle('rc-hit', done);
-      if (meta) meta.textContent = hits + '/' + c.covers.length;
-      if (box) box.classList.toggle('rc-done', done);
-      if (done && !prevChainDone.has(key) && prevChainDone.size) toast('chain ' + c.n + ' complete \u2713');
-      done ? prevChainDone.add(key) : prevChainDone.delete(key);
+      // ticks one row-set; returns the targets that are still missing from the save
+      const applySteps = (kind, it) => {
+        const missing = [];
+        it.steps.forEach((st, i) => {
+          const target = st.k === 'seek' ? st.seg : st.into;
+          const sdone = !!target && covered.has(target);
+          const li = list.querySelector('li.rc-step[data-kind="' + kind + '"][data-n="' + it.n + '"][data-i="' + i + '"]');
+          if (li) li.classList.toggle('rc-step-done', sdone);
+          const why = list.querySelector('[data-why="' + kind + '-' + it.n + '-' + i + '"]');
+          if (why) why.textContent = sdone ? '' : 'needs ' + target;
+          if (!sdone && target && missing.indexOf(target) < 0) missing.push(target);
+          const skey = kind + '-' + it.n + '-' + i;
+          sdone ? prevStepDone.add(skey) : prevStepDone.delete(skey);
+        });
+        return missing;
+      };
 
-      c.steps.forEach((st, i) => {
-        const target = st.k === 'seek' ? st.seg : st.into;
-        const sdone = !!target && covered.has(target);
-        const li = list.querySelector('li.rc-step[data-kind="chain"][data-n="' + c.n + '"][data-i="' + i + '"]');
-        if (li) li.classList.toggle('rc-step-done', sdone);
-        const skey = key + '-' + i;
-        sdone ? prevStepDone.add(skey) : prevStepDone.delete(skey);
+      DATA.chains.forEach((c) => {
+        const hits = c.covers.filter((x) => covered.has(x)).length;
+        const done = hits === c.covers.length;
+        if (done) chainDoneCount++;
+        const key = 'chain-' + c.n;
+        const mark = list.querySelector('.rc-mark[data-chain="' + key + '"]');
+        const meta = list.querySelector('[data-meta="' + key + '"]');
+        const box = list.querySelector('details[data-kind="chain"][data-n="' + c.n + '"]');
+        const missing = applySteps('chain', c);
+        if (mark) mark.classList.toggle('rc-hit', done);
+        if (meta) {
+          meta.textContent = hits + '/' + c.covers.length;
+          meta.title = done ? 'every segment this chain covers is in the save' : 'still missing from the save: ' + missing.join(', ');
+        }
+        if (box) box.classList.toggle('rc-done', done);
+        if (done && !prevChainDone.has(key) && prevChainDone.size) toast('chain ' + c.n + ' complete \u2713');
+        done ? prevChainDone.add(key) : prevChainDone.delete(key);
       });
-    });
 
-    DATA.setups.forEach((s) => {
-      setupTotal++;
-      const all = s.steps.every((st) => covered.has(st.k === 'seek' ? st.seg : st.into));
-      if (all) setupDoneCount++;
-      const key = 'setup-' + s.n;
-      const mark = list.querySelector('.rc-mark[data-chain="' + key + '"]');
-      const meta = list.querySelector('[data-meta="' + key + '"]');
-      const box = list.querySelector('details[data-kind="setup"][data-n="' + s.n + '"]');
-      if (mark) mark.classList.toggle('rc-hit', all);
-      if (meta) meta.textContent = all ? 'done' : 'pending';
-      if (box) box.classList.toggle('rc-done', all);
-      s.steps.forEach((st, i) => {
-        const target = st.k === 'seek' ? st.seg : st.into;
-        const li = list.querySelector('li.rc-step[data-kind="setup"][data-n="' + s.n + '"][data-i="' + i + '"]');
-        if (li) li.classList.toggle('rc-step-done', covered.has(target));
+      DATA.setups.forEach((s) => {
+        const missing = applySteps('setup', s);
+        const all = missing.length === 0;
+        if (all) setupDoneCount++;
+        const key = 'setup-' + s.n;
+        const mark = list.querySelector('.rc-mark[data-chain="' + key + '"]');
+        const meta = list.querySelector('[data-meta="' + key + '"]');
+        const box = list.querySelector('details[data-kind="setup"][data-n="' + s.n + '"]');
+        if (mark) mark.classList.toggle('rc-hit', all);
+        if (meta) meta.innerHTML = all ? 'done' : '<span class="rc-need">needs ' + missing.join(', ') + '</span>';
+        if (box) box.classList.toggle('rc-done', all);
       });
-    });
 
-    const segTotal = (window.segmentMap && Object.keys(segmentMap.segments).length) || 250;
-    stats.innerHTML =
-      '<div>segments <b>' + covered.size + '</b>/' + segTotal +
-      ' &middot; chains <b class="' + (chainDoneCount === chainTotal ? 'rc-ok' : '') + '">' + chainDoneCount + '/' + chainTotal + '</b>' +
-      ' &middot; setups <b class="' + (setupDoneCount === setupTotal ? 'rc-ok' : '') + '">' + setupDoneCount + '/' + setupTotal + '</b></div>';
-    bar.style.width = Math.round((chainDoneCount / Math.max(1, chainTotal)) * 100) + '%';
+      const segTotal = (window.segmentMap && Object.keys(segmentMap.segments).length) || 250;
+      const now = new Date();
+      stats.innerHTML =
+        '<div>segments <b>' + covered.size + '</b>/' + segTotal +
+        ' &middot; chains <b class="' + (chainDoneCount === chainTotal ? 'rc-ok' : '') + '">' + chainDoneCount + '/' + chainTotal + '</b>' +
+        ' &middot; setups <b class="' + (setupDoneCount === setupTotal ? 'rc-ok' : '') + '">' + setupDoneCount + '/' + setupTotal + '</b></div>' +
+        '<div class="rc-live">live &middot; read the save at ' +
+        String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0') +
+        ' &middot; covered segments: ' + covered.size + '</div>';
+      bar.style.width = Math.round((chainDoneCount / Math.max(1, chainTotal)) * 100) + '%';
 
-    if (filter !== 'all') {
-      list.querySelectorAll('details.rc-item').forEach((d) => {
-        const done = d.classList.contains('rc-done');
-        d.style.display = (filter === 'done') === done ? '' : 'none';
-      });
+      if (filter !== 'all') {
+        list.querySelectorAll('details.rc-item').forEach((d) => {
+          const done = d.classList.contains('rc-done');
+          d.style.display = (filter === 'done') === done ? '' : 'none';
+        });
+      }
+    } catch (err) {
+      console.error('[route-console] refresh failed', err);
+      if (lastErr !== String(err)) {
+        lastErr = String(err);
+        toast('route console refresh failed: ' + err.message, true);
+      }
     }
   }
 
