@@ -85,7 +85,7 @@
     'li.rc-step .rc-b i{color:#6d8f86;font-style:normal}',
     'li.rc-step.rc-step-done .rc-b{color:#5c7d75;text-decoration:line-through;text-decoration-color:#1c6b53}',
     'li.rc-step.rc-step-done .rc-mark{background:#2ee6a8;border-color:#2ee6a8;color:#04140f;animation:rc-pop .45s cubic-bezier(.2,.9,.3,1.5)}',
-    'li.rc-step .rc-why{color:#ff6b6b;font-size:11px;white-space:nowrap;flex:0 0 auto;animation:rc-blink .9s ease-in-out infinite}',
+    'li.rc-step .rc-why{color:#ff6b6b;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46%;flex:0 1 auto;animation:rc-blink .9s ease-in-out infinite}',
     'li.rc-step.rc-step-done .rc-why{display:none}',
     '@keyframes rc-blink{0%,100%{opacity:1}50%{opacity:.35}}',
     '.rc-meta .rc-need{color:#ff6b6b}',
@@ -174,19 +174,23 @@
     list.querySelectorAll('li.rc-step').forEach((li) => li.addEventListener('click', () => {
       const kind = li.dataset.kind, n = +li.dataset.n, i = +li.dataset.i;
       const item = (kind === 'chain' ? DATA.chains : DATA.setups).find((x) => x.n === n);
-      jump(item.steps[i]);
+      jump(item.steps[i], null, i > 0);
     }));
     refresh();
   }
 
-  function jump(st, note) {
+  function jump(st, note, mid) {
     const v = document.getElementById('video');
     if (!v || !v.currentSrc) {
       toast('no video loaded — pick the video file first', true);
       return;
     }
     seek(st.at);
-    toast((note ? note + ' — ' : '') + 'jumped to ' + st.seg + ' at ' + fmt(st.at) + ' — a jump writes no progress, watch from here');
+    const msg = (note ? note + ' — ' : '') + 'jumped to ' + st.seg + ' at ' + fmt(st.at) +
+      (mid
+        ? ' · MID-ROUTE jump: impressions before this point were skipped, state flags may resolve somewhere else'
+        : ' · a jump writes no progress, watch from here');
+    toast(msg, !!mid);
   }
 
   function refresh() {
@@ -215,7 +219,15 @@
           const li = list.querySelector('li.rc-step[data-kind="' + kind + '"][data-n="' + it.n + '"][data-i="' + i + '"]');
           if (li) li.classList.toggle('rc-step-done', sdone);
           const why = list.querySelector('[data-why="' + kind + '-' + it.n + '-' + i + '"]');
-          if (why) why.textContent = sdone ? '' : 'needs ' + target;
+          if (why) {
+            if (sdone) why.textContent = '';
+            else {
+              // this click resolves through a segment group: name the member the save already
+              // holds, that is almost always where the click actually landed
+              const got = (st.siblings || []).filter((x) => x !== target && covered.has(x));
+              why.textContent = 'needs ' + target + (got.length ? ' (got ' + got.join('/') + ')' : '');
+            }
+          }
           if (!sdone && target && missing.indexOf(target) < 0) missing.push(target);
           const skey = kind + '-' + it.n + '-' + i;
           sdone ? prevStepDone.add(skey) : prevStepDone.delete(skey);
@@ -291,7 +303,7 @@
         det.open = true;
         li.scrollIntoView({ block: 'center', behavior: 'smooth' });
         const st = g.it.steps[+li.dataset.i];
-        jump(st, 'next pending: ' + g.kind + ' ' + g.it.n + ' step ' + (+li.dataset.i + 1));
+        jump(st, 'next pending: ' + g.kind + ' ' + g.it.n + ' step ' + (+li.dataset.i + 1), +li.dataset.i > 0);
         return;
       }
     }

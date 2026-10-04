@@ -34,6 +34,25 @@ function choiceMs(seg, label) {
   }
   return null;
 }
+// the same click can resolve to a whole segment group depending on the state flags, so keep
+// every member around — when the route step stays unchecked the console can name the sibling
+// the save actually got instead of just "needs X".
+function choiceInfo(seg, label) {
+  for (const m of bv.momentsBySegment[seg] || []) {
+    if (!m.choices) continue;
+    for (const c of m.choices) {
+      if (((en[seg] && en[seg][c.id]) || c.text || c.id) !== label) continue;
+      const group = c.sg && bv.segmentGroups[c.sg];
+      return {
+        sg: c.sg || null,
+        siblings: group
+          ? bv.segmentGroups[c.sg].map((x) => (typeof x === 'string' ? x : x.segment)).filter(Boolean)
+          : [],
+      };
+    }
+  }
+  return { sg: null, siblings: [] };
+}
 
 // two constraints on where a seek may land:
 //  (a) scripts.js only treats a jump as a seek when it moves >= 2000ms — landing within 2s of
@@ -87,9 +106,12 @@ function stepData(raw) {
   const row = { k: 'play', seg, at: seekMs(seg), head: p[0].trim(), into: destOf(p[2]) };
   if (!/do nothing/.test(p[1])) {
     const label = /^CLICK:/.test(p[1]) ? p[1].slice(7) : p[1];
+    const info = choiceInfo(seg, label);
     row.k = 'click';
     row.label = label;
     row.choiceAt = choiceMs(seg, label);
+    if (info.sg) row.via = info.sg;
+    if (info.siblings.length) row.siblings = info.siblings;
   }
   return row;
 }
