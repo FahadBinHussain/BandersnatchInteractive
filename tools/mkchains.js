@@ -62,7 +62,7 @@ function choiceInfo(seg, label) {
 //  (b) an impression moment that starts inside the segment gets skipped if the seek lands on
 //      or past it (momentStart(m, seeked=true) drops impressionData).
 // choice-only moments are fine to land in: addChoices still runs, so the buttons appear.
-function seekMs(seg) {
+function seekMs(seg, quiet) {
   const s = segments[seg];
   const start = s.startTimeMs;
   let t = start + 3000;
@@ -70,7 +70,7 @@ function seekMs(seg) {
     if (m.startMs <= start || !m.impressionData) continue;
     if (m.startMs - 500 < t) t = m.startMs - 500;
   }
-  if (t < start + 2000) {
+  if (t < start + 2000 && !quiet) {
     console.error(`WARN ${seg}: seek ${fmtMs(t)} is under 2s past the segment start — jump in from somewhere far away or the outgoing segment will fire its transition`);
   }
   if (s.endTimeMs) t = Math.min(t, s.endTimeMs - 1000);
@@ -148,6 +148,114 @@ function groupMembers(key, depth) {
   return out;
 }
 
+// ---- "fix <flag>" jump stops -------------------------------------------------------
+// the console's "fix p_x" hint is useless without somewhere to jump and something to click,
+// so record how to reach a writer for every (flag, value) a group precondition can ask for.
+// writers rank by seconds of watching: a click fires even when you seeked in, an interior
+// impression fires if you seek just before it, and a moment sitting on its segment's start
+// needs a predecessor you watch into. "nuclear" = the 1A intro reset, which wipes every flag.
+function labelOf(seg, c) {
+  return (en[seg] && en[seg][c.id]) || c.text || c.id;
+}
+function playInPredecessors(seg, atMs) {
+  const s = segments[seg];
+  const base = Math.max(0, atMs - s.startTimeMs);
+  const out = [];
+  for (const pseg of Object.keys(segments)) {
+    const p = segments[pseg];
+    // defaultNext: watch the predecessor out, the player walks to seg on its own — but a
+    // segment with its own group resolves that group FIRST (nextChoice → selfgroup →
+    // defaultNext), so it would never reach defaultNext while a member matches: skip it
+    if (p.defaultNext === seg && !bv.segmentGroups[pseg]) {
+      const at = seekMs(pseg, true);
+      if (p.endTimeMs - at >= 1000) {
+        out.push({ cost: Math.max(0, p.endTimeMs - at) + base, stop: { seg: pseg, at, hopEnd: p.endTimeMs, dest: seg, watch: atMs } });
+      }
+    }
+  }
+  for (const pseg of Object.keys(bv.segmentGroups || {})) {
+    if (!segments[pseg] || !groupMembers(pseg).some((m) => m.seg === seg)) continue;
+    const p = segments[pseg];
+    const at = seekMs(pseg, true);
+    if (p.endTimeMs - at >= 1000) {
+      // grp: the player takes the FIRST member the flags allow, so landing here is not
+      // guaranteed — the console must say so instead of promising the destination
+      out.push({ cost: Math.max(0, p.endTimeMs - at) + base, stop: { seg: pseg, at, hopEnd: p.endTimeMs, dest: seg, watch: atMs, grp: true } });
+    }
+  }
+  for (const pseg of Object.keys(bv.momentsBySegment)) {
+    if (!segments[pseg]) continue;
+    for (const m of bv.momentsBySegment[pseg] || []) {
+      for (const c of m.choices || []) {
+        if (c.segmentId !== seg) continue;
+        const at = choiceSeek(pseg, m);
+        if (at === null) continue;
+        out.push({ cost: Math.max(0, m.startMs - at) + base, stop: { seg: pseg, at, click: labelOf(pseg, c), clickAt: m.startMs, dest: seg, watch: atMs } });
+      }
+    }
+  }
+  out.sort((a, b) => a.cost - b.cost);
+  return out;
+}
+// where to stand for a choice: just before the button window when that is >=2s past the
+// segment start, otherwise anywhere inside the window — landing after it ends means no buttons
+function choiceSeek(seg, m) {
+  let at = seekMs(seg, true);
+  const btn = m.startMs - 500;
+  if (btn - segments[seg].startTimeMs >= 2000) at = Math.min(at, btn);
+  if (at >= (m.endMs || Infinity)) return null;
+  return at;
+}
+const stopsOut = {};
+function consider(flag, v, stop, side) {
+  if (!stop) return;
+  if (stop.seg === '1A' || stop.dest === '1A') stop.nuclear = true;
+  if (side && side.length) stop.side = side;
+  const bag = (stopsOut[flag] = stopsOut[flag] || {});
+  const key = String(v);
+  const prev = bag[key];
+  if (!prev || stopCost(stop) < stopCost(prev)) bag[key] = stop;
+}
+function stopCost(s) {
+  // seconds of watching, from the seek target to the moment that writes the flag
+  const base = s.watch != null && s.dest ? Math.max(0, s.watch - (segments[s.dest] ? segments[s.dest].startTimeMs : 0)) : 0;
+  if (s.click) return Math.max(0, s.clickAt - s.at) + base;
+  if (s.hopEnd) return Math.max(0, s.hopEnd - s.at) + base;
+  return Math.max(0, s.watch - s.at);
+}
+for (const [seg, ms] of Object.entries(bv.momentsBySegment)) {
+  if (!segments[seg]) continue;
+  for (const m of ms || []) {
+    const mi = m.impressionData && m.impressionData.data && m.impressionData.data.persistent;
+    if (mi) {
+      const side = Object.keys(mi);
+      const direct = m.startMs - segments[seg].startTimeMs >= 3000;
+      const stop = direct ? { seg, at: seekMs(seg, true), watch: m.startMs } : (playInPredecessors(seg, m.startMs)[0] || {}).stop;
+      for (const [f, v] of Object.entries(mi)) consider(f, v, stop && Object.assign({}, stop), side.filter((x) => x !== f));
+    }
+    for (const c of m.choices || []) {
+      const ci = c.impressionData && c.impressionData.data && c.impressionData.data.persistent;
+      if (!ci) continue;
+      const side = Object.keys(ci);
+      const at = choiceSeek(seg, m);
+      const stop = at === null ? null : { seg, at, click: labelOf(seg, c), clickAt: m.startMs, dest: c.segmentId || null };
+      for (const [f, v] of Object.entries(ci)) consider(f, v, stop && Object.assign({}, stop), side.filter((x) => x !== f));
+    }
+  }
+}
+// the search above runs quiet; surface the "<2s past the segment start" trap once per stop
+// that actually shipped, because jumping that close can fire the outgoing segment instead
+{
+  const seen = new Set();
+  for (const bag of Object.values(stopsOut)) {
+    for (const s of Object.values(bag)) {
+      if (seen.has(s.seg)) continue;
+      seen.add(s.seg);
+      seekMs(s.seg);
+    }
+  }
+}
+
 // raw plan steps are "HH:MM:SS SEG → action → dest"; the head is the segment start, but the
 // line opens with the seek time, so keep them in sync instead of showing two different times.
 function fmtSeq(raw) {
@@ -200,5 +308,5 @@ fs.writeFileSync(path.join(repo, 'ROUTE.md'),
   txt + '\n');
 fs.writeFileSync(path.join(repo, 'route-data.js'),
   '// generated by tools/mkchains.js from the planner output — do not edit by hand\n' +
-  'window.ROUTE_DATA = ' + JSON.stringify({ summary: d.summary, chains: chainsData, setups: setupsData }) + ';\n');
-console.log('chains', chainsData.length, 'setups', setupsData.length, '-> ROUTE.md + tools/chains.txt + route-data.js');
+  'window.ROUTE_DATA = ' + JSON.stringify({ summary: d.summary, chains: chainsData, setups: setupsData, stops: stopsOut }) + ';\n');
+console.log('chains', chainsData.length, 'setups', setupsData.length, 'stops', Object.keys(stopsOut).length, '-> ROUTE.md + tools/chains.txt + route-data.js');

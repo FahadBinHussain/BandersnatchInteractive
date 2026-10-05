@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-05.4';
+  const RC_VERSION = '2026-10-05.5';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -23,6 +23,7 @@
     '    <button data-filter="done">done</button>' +
     '    <button id="rc-next" title="jump to the next pending step (N)">next &rarr;</button>' +
     '  </div>' +
+    '  <div id="rc-do" title="click to dismiss"></div>' +
     '  <div id="rc-list"></div>' +
     '  <footer><kbd>C</kbd> hide &middot; <kbd>N</kbd> jump to next &middot; click any step to jump &middot; build <span id="rc-v"></span></footer>' +
     '</aside>' +
@@ -61,6 +62,22 @@
     '#rc-actions button:hover{border-color:#2ee6a8;color:#2ee6a8;transform:translateY(-1px)}',
     '#rc-actions button.rc-on{background:#123b33;border-color:#2ee6a8;color:#2ee6a8}',
     '#rc-next{margin-left:auto}',
+    // fix-chip banner: what a "fix p_x" button sends you to do
+    '#rc-do{display:none;margin:0 14px 8px;padding:8px 10px;border:1px solid #2ee6a8;border-radius:6px;',
+    ' background:rgba(14,44,36,.92);color:#eafff8;font-size:11px;line-height:1.55;cursor:pointer}',
+    '#rc-do.rc-on{display:block;animation:rc-pop .35s cubic-bezier(.2,.9,.3,1.4)}',
+    '#rc-do.rc-nuclear{border-color:#ff6b6b;background:rgba(64,14,14,.94);color:#ffd7d7}',
+    '#rc-do b{color:#7CFFB2}#rc-do .rc-warn{color:#ff6b6b}',
+    '#rc-do i{color:#8fb3aa;font-style:normal}',
+    // fix chips on the red "needs …" rows: click one and the banner above tells you the stop
+    '.rc-fix{background:#3a2b12;border:1px solid #b98b2e;color:#ffd98a;border-radius:5px;padding:0 6px;margin:0 0 0 3px;',
+    ' cursor:pointer;font:inherit;font-size:10px;letter-spacing:.02em;transition:all .18s cubic-bezier(.2,.9,.3,1.4)}',
+    '.rc-fix:hover{background:#54401a;transform:translateY(-2px);box-shadow:0 3px 10px rgba(255,190,80,.4)}',
+    '.rc-fix:active{transform:translateY(0) scale(.92)}',
+    '.rc-goto{background:#123b33;border:1px solid #2ee6a8;color:#2ee6a8;border-radius:5px;padding:0 6px;margin:0 0 0 3px;',
+    ' cursor:pointer;font:inherit;font-size:10px;transition:all .18s cubic-bezier(.2,.9,.3,1.4)}',
+    '.rc-goto:hover{transform:translateY(-2px);box-shadow:0 3px 10px rgba(46,230,168,.4)}',
+    '.rc-nostop{color:#8a6d3b;text-decoration:underline dotted;cursor:help}',
     '#rc-list{flex:1;overflow-y:auto;padding:0 10px 14px}',
     '#rc-list::-webkit-scrollbar{width:8px}#rc-list::-webkit-scrollbar-thumb{background:#1c4d41;border-radius:8px}',
     'details.rc-item{border:1px solid #133630;border-radius:8px;margin-bottom:6px;background:rgba(10,26,22,.6);overflow:hidden;transition:border-color .25s,background .25s}',
@@ -141,6 +158,20 @@
     const s = Math.round(v / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0');
   }
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // where to stand in a segment you jump into cold: +3s, but never on/past an impression
+  // moment (momentStart drops impressionData when you seeked into it)
+  function seekSafe(seg) {
+    const S = window.segmentMap && segmentMap.segments && segmentMap.segments[seg];
+    if (!S) return null;
+    let t = S.startTimeMs + 3000;
+    for (const m of (window.momentsBySegment && window.momentsBySegment[seg]) || []) {
+      if (m.startMs <= S.startTimeMs || !m.impressionData) continue;
+      if (m.startMs - 500 < t) t = m.startMs - 500;
+    }
+    if (S.endTimeMs) t = Math.min(t, S.endTimeMs - 1000);
+    return t;
+  }
 
   // tiny evaluator for the shipped precondition trees, mirroring scripts.js
   // preconditionToJS: and / or / not / persistentState / eql, with eql as a loose == on the
@@ -193,6 +224,21 @@
       const d = describeCond(expr);
       if (out.indexOf(d) < 0) out.push(d);
     }
+  }
+
+  // "fix p_x" / "fix p_ps=t" -> a button that jumps to the generated stop for that flag;
+  // no stop exists for that value -> a marked span, never a dead button
+  function fixChip(d, fl) {
+    const m = /^(!?)([A-Za-z0-9_]+)(?:=(.+))?$/.exec(d);
+    if (!m) return esc(d);
+    const flag = m[2];
+    const want = m[3] !== undefined ? m[3] : String(!fl[flag]);
+    const stop = DATA.stops && DATA.stops[flag] && DATA.stops[flag][want];
+    if (!stop) {
+      return '<span class="rc-nostop" title="no known way to set ' + esc(flag) + '=' + esc(want) + '">' + esc(d) + '</span>';
+    }
+    return '<button class="rc-fix" data-flag="' + esc(flag) + '" data-want="' + esc(want) + '" title="jump there and set ' +
+      esc(flag) + '=' + esc(want) + '">' + esc(d) + ' &#8599;</button>';
   }
 
   function flagsFor(step) {
@@ -268,6 +314,50 @@
     toast(msg, !!mid);
   }
 
+  // one line describing a generated stop (route-data.js stops[flag][value]), in watch order
+  function stopLine(s) {
+    const startOf = (x) => (window.segmentMap && segmentMap.segments[x] ? segmentMap.segments[x].startTimeMs : null);
+    let l = 'jump <b>' + esc(s.seg) + '</b> at ' + fmt(s.at);
+    if (s.click) l += ' &middot; click <b>&quot;' + esc(s.click) + '&quot;</b> at ' + fmt(s.clickAt);
+    if (s.hopEnd) l += ' &middot; watch to ' + fmt(s.hopEnd);
+    if (s.dest) l += ' &rarr; ' + esc(s.dest) + (s.grp ? ' <i>&larr; segment group: the first member your flags allow wins, not necessarily this one</i>' : '');
+    if (s.watch != null) {
+      const base = startOf(s.dest || s.seg);
+      const near = base != null && s.watch - base <= 1500;
+      l += near ? ' &middot; let it play a beat, the flag fires right there' : ' &middot; watch to ' + fmt(s.watch) + ' (flag fires)';
+    }
+    if (!s.nuclear && s.side && s.side.length) {
+      l += ' &middot; also sets ' + s.side.slice(0, 6).map(esc).join(' ') + (s.side.length > 6 ? ' +' + (s.side.length - 6) : '');
+    }
+    return l;
+  }
+
+  // a "fix p_x" chip: show the stop in the banner, then jump to where it starts
+  function applyFix(flag, want) {
+    const stop = DATA.stops && DATA.stops[flag] && DATA.stops[flag][String(want)];
+    if (!stop) {
+      toast('no stop generated for ' + flag + '=' + want, true);
+      return;
+    }
+    const doEl = root.querySelector('#rc-do');
+    doEl.classList.toggle('rc-nuclear', !!stop.nuclear);
+    doEl.innerHTML =
+      (stop.nuclear ? '<b class="rc-warn">INTRO RESET &mdash; wipes EVERY state flag (anything you set earlier dies)</b><br>' : '') +
+      '<b>' + esc(flag) + ' &rarr; ' + esc(want) + '</b> &middot; ' + stopLine(stop);
+    doEl.classList.add('rc-on');
+    jump({ seg: stop.seg, at: stop.at }, flag + ' ' + want, false);
+    if (stop.nuclear) toast('NUCLEAR stop: ' + flag + ' only clears via the 1A reset, which clears everything else too', true);
+  }
+
+  function gotoSeg(seg) {
+    const t = seekSafe(seg);
+    if (t == null) {
+      toast('no known seek time for ' + seg, true);
+      return;
+    }
+    jump({ seg, at: t }, 'other landing', false);
+  }
+
   function refresh() {
     if (!DATA) return;
     try {
@@ -303,25 +393,32 @@
               const landed = st.group.find((m) => evalReq(m.req, fl));
               const tgt = st.group.find((m) => m.seg === target);
               const tgtOk = !!(tgt && evalReq(tgt.req, fl));
-              let msg = 'needs ' + target;
+              let msg = 'needs ' + esc(target);
               if (landed && landed.seg !== target) {
-                msg += ' · your flags send it to ' + landed.seg;
-                if (tgtOk) msg += ' (' + target + ' matches too, but an earlier member wins)';
+                msg += ' · your flags send it to <button class="rc-goto" data-seg="' + esc(landed.seg) +
+                  '" title="jump to ' + esc(landed.seg) + '">' + esc(landed.seg) + '</button>';
+                if (tgtOk) msg += ' (' + esc(target) + ' matches too, but an earlier member wins)';
+                else {
+                  // diverted AND the target itself does not pass yet: say what the target needs
+                  const miss = [];
+                  if (tgt) failing(tgt.req, fl, miss);
+                  if (miss.length) msg += ' · fix ' + miss.slice(0, 4).map((d) => fixChip(d, fl)).join(' ');
+                }
               } else if (landed) {
                 msg += st.k === 'click' ? ' · flags ok, click lands here' : ' · flags ok, plays here';
               } else {
                 const miss = [];
                 if (tgt) failing(tgt.req, fl, miss);
-                if (miss.length) msg += ' · fix ' + miss.slice(0, 4).join(' ');
-                else msg += st.fallback ? ' · no member matches, goes to ' + st.fallback : ' · no member matches your flags';
+                if (miss.length) msg += ' · fix ' + miss.slice(0, 4).map((d) => fixChip(d, fl)).join(' ');
+                else msg += st.fallback ? ' · no member matches, goes to ' + esc(st.fallback) : ' · no member matches your flags';
               }
               // live flag values: "why" is decided by these, so they are on the row itself
               const live = Object.keys(fl).sort().slice(0, 20).map((k) => {
                 const v = fl[k];
                 return k.replace(/^p_/, '') + '=' + (v === true ? 1 : v === false || v === null || v === undefined ? 0 : v);
               }).join(' ');
-              if (live) msg += ' · ' + live;
-              why.textContent = msg;
+              if (live) msg += ' · ' + esc(live);
+              why.innerHTML = msg;
             } else {
               const got = (st.siblings || []).filter((x) => x !== target && covered.has(x));
               const have = got.length ? got.slice(0, 3).join('/') + (got.length > 3 ? ' +' + (got.length - 3) : '') : '';
@@ -420,6 +517,23 @@
     root.querySelectorAll('#rc-actions button[data-filter]').forEach((x) => x.classList.toggle('rc-on', x === b));
     refresh();
   }));
+  // capture phase: the fix/goto chips sit inside a clickable step row, and the row's own
+  // listener would otherwise fire first and seek to the step instead of the stop
+  list.addEventListener('click', (e) => {
+    if (!(e.target instanceof Element)) return;
+    const fix = e.target.closest('.rc-fix');
+    if (fix) {
+      e.stopPropagation();
+      applyFix(fix.dataset.flag, fix.dataset.want);
+      return;
+    }
+    const go = e.target.closest('.rc-goto');
+    if (go) {
+      e.stopPropagation();
+      gotoSeg(go.dataset.seg);
+    }
+  }, true);
+  root.querySelector('#rc-do').addEventListener('click', function () { this.classList.remove('rc-on'); });
   document.addEventListener('keydown', (e) => {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const tag = (e.target && e.target.tagName) || '';
@@ -430,6 +544,6 @@
 
   build();
   setInterval(refresh, 1000);
-  window.__routeConsole = { toggle, refresh, jump, toast };
+  window.__routeConsole = { toggle, refresh, jump, toast, applyFix, gotoSeg };
   console.log('route console ' + RC_VERSION + ' ready — press C to toggle, N for the next pending step');
 })();
