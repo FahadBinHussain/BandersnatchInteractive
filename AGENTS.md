@@ -94,7 +94,11 @@ panic.
   preconditions, evaluated live against `persistentState_*` with the same and/or/not/eql semantics
   as `preconditionToJS`: the row prints `flags ok, plays here`, `your flags send it to <other
   member>`, or `fix <flag>` naming exactly the flags blocking the target — that is how you tell
-  "wrong flags" from "didn't watch it". the footer shows
+  "wrong flags" from "didn't watch it". the player takes the **first** matching member in group
+  order, so a target can match and still lose (`… your flags send it to SS9 (SS22 matches too,
+  but an earlier member wins)`) — never read "target passes" as "I will land there". the row
+  ends with the live flag values it evaluated (`… · 2b=1 bo=1 ty=0 …`), so a screenshot is
+  enough to diagnose a wrong landing. the footer shows
   the build stamp — if it isn't the newest, the browser is serving a cached copy (hard reload).
   **N** jumps to the next pending step. clicking any step seeks the player to that step's
   seek-safe time (segment start +3s, clamped before interior impression moments); a jump into
@@ -124,6 +128,16 @@ isn't enterable. things that were fixed once and must stay fixed:
   "enter" segments you actually can't.
 - keep state dedup to a parent-pointer BFS with a cap, or the full-state set OOMs.
 - `MAXEXP` env var caps expansions when a run gets too slow.
+
+## why a landing can flip under "flags ok"
+
+`splitScreens` order is fixed (`SS12 … SS9, SS4, SS22, SS21, SS5, respawnOptions`) and the player
+picks the **first** member whose precondition passes. `SS22` sits after `SS2…SS9`, and all of those
+require `!p_ty` — so `8B → SS22` (chain 3) is reachable only while `p_ty` is true. `p_ty` is set
+only by the `8J` moment at 1:17:58 (seek `ZK3` 4:00:14 → click `TOY` at 4:00:30 → watch ~3s) and
+cleared only by the `1A` intro reset, so any 1A-starting setup/chain run after it silently breaks
+chain 3's landing. same shape applies to other split-screens targets: check the row's live flags,
+not just whether the target's own precondition passes.
 
 ## headless check of the console
 

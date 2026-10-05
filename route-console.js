@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-05.2';
+  const RC_VERSION = '2026-10-05.3';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -161,7 +161,8 @@
     }
     return false;
   }
-  const evalReq = (expr, flags) => !!val(expr, flags);
+  // a member shipped with no precondition passes for everyone (evalPrecondition: no cond -> true)
+  const evalReq = (expr, flags) => (expr === null || expr === undefined ? true : !!val(expr, flags));
 
   // the flag names a condition needs, for "fix <names>" hints
   function describeCond(expr) {
@@ -296,21 +297,30 @@
           if (why) {
             if (sdone) why.textContent = '';
             else if (st.group && st.group.length) {
-              // the destination resolves through a segment group: say where the *live* flags
-              // would send it, and name the flags that block the target
+              // the destination resolves through a segment group: the player takes the FIRST
+              // member that matches, so a target that matches can still lose to an earlier one
               const fl = flagsFor(st);
               const landed = st.group.find((m) => evalReq(m.req, fl));
               const tgt = st.group.find((m) => m.seg === target);
+              const tgtOk = !!(tgt && evalReq(tgt.req, fl));
               let msg = 'needs ' + target;
-              if (tgt && evalReq(tgt.req, fl)) {
+              if (landed && landed.seg !== target) {
+                msg += ' · your flags send it to ' + landed.seg;
+                if (tgtOk) msg += ' (' + target + ' matches too, but an earlier member wins)';
+              } else if (landed) {
                 msg += st.k === 'click' ? ' · flags ok, click lands here' : ' · flags ok, plays here';
               } else {
-                if (landed && landed.seg !== target) msg += ' · your flags send it to ' + landed.seg;
                 const miss = [];
                 if (tgt) failing(tgt.req, fl, miss);
                 if (miss.length) msg += ' · fix ' + miss.slice(0, 4).join(' ');
-                else if (!landed) msg += st.fallback ? ' · no member matches, goes to ' + st.fallback : ' · no member matches your flags';
+                else msg += st.fallback ? ' · no member matches, goes to ' + st.fallback : ' · no member matches your flags';
               }
+              // live flag values: "why" is decided by these, so they are on the row itself
+              const live = Object.keys(fl).sort().slice(0, 20).map((k) => {
+                const v = fl[k];
+                return k.replace(/^p_/, '') + '=' + (v === true ? 1 : v === false || v === null || v === undefined ? 0 : v);
+              }).join(' ');
+              if (live) msg += ' · ' + live;
               why.textContent = msg;
             } else {
               const got = (st.siblings || []).filter((x) => x !== target && covered.has(x));
