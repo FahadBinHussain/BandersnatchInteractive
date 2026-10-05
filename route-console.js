@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-05.7';
+  const RC_VERSION = '2026-10-05.8';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -231,6 +231,18 @@
     }
   }
 
+  // the mirror image: which conditions does an EARLIER winning member rely on? breaking any
+  // single one of these AND-items stops it matching, so a later target can win the group
+  function beatItems(expr, out) {
+    if (!Array.isArray(expr)) return;
+    if (expr[0] === 'and') {
+      expr.slice(1).forEach((x) => beatItems(x, out));
+      return;
+    }
+    const d = describeCond(expr);
+    if (out.indexOf(d) < 0) out.push(d);
+  }
+
   // "fix p_x" / "fix p_ps=t" -> a button that jumps to the generated stop for that flag;
   // no stop exists for that value -> a marked span, never a dead button
   function fixChip(d, fl) {
@@ -289,7 +301,13 @@
       return { ok: false, why: 'no group member matches your flags' + (s.fallback ? ' &rarr; goes to ' + esc(s.fallback) : ''), miss: targetMisses(s, fl) };
     }
     if ((s.targets || []).indexOf(landed.seg) >= 0) return { ok: true, landed };
-    return { ok: false, why: 'your flags send it to <b>' + esc(landed.seg) + '</b>', miss: targetMisses(s, fl) };
+    // diverted: the target may well pass too — say how to make the WINNER stop matching
+    const beat = [];
+    beatItems(landed.req, beat);
+    let why = 'your flags send it to <b>' + esc(landed.seg) + '</b>';
+    if (beat.length) why += ' &middot; make <b>' + esc(landed.seg) + '</b> lose: ' + beat.map((d) => fixChip(d, fl)).join(' or ');
+    else why += ' &middot; ' + esc(landed.seg) + ' matches unconditionally — no flag can beat it here';
+    return { ok: false, why, miss: targetMisses(s, fl) };
   }
   // what still blocks the flag-writing members (fix chips shown next to a reject reason)
   function targetMisses(s, fl) {
@@ -502,8 +520,13 @@
               if (landed && landed.seg !== target) {
                 msg += ' · your flags send it to <button class="rc-goto" data-seg="' + esc(landed.seg) +
                   '" title="jump to ' + esc(landed.seg) + '">' + esc(landed.seg) + '</button>';
-                if (tgtOk) msg += ' (' + esc(target) + ' matches too, but an earlier member wins)';
-                else {
+                if (tgtOk) {
+                  // the target passes too — the only problem is the winner: name what beats it
+                  const beat = [];
+                  beatItems(landed.req, beat);
+                  msg += ' (' + esc(target) + ' matches too, but an earlier member wins)';
+                  if (beat.length) msg += ' · make ' + esc(landed.seg) + ' lose: ' + beat.slice(0, 3).map((d) => fixChip(d, fl)).join(' or ');
+                } else {
                   // diverted AND the target itself does not pass yet: say what the target needs
                   const miss = [];
                   if (tgt) failing(tgt.req, fl, miss);

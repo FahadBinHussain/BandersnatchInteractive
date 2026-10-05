@@ -120,7 +120,10 @@ panic.
   the exact reject reason (`your flags send it to <member>` / `no group member matches`), inline
   `fix <flag>` chips that would change the verdict, and an explicit "do it anyway" button for the
   1A reset — nuclear is **never auto-jumped** unless it's the flag's sole writer (e.g.
-  `p_pr=false`). the 1A reset shows its red `INTRO RESET — wipes
+  `p_pr=false`). a divert reject (`your flags send it to <member>`) also ends with
+  `make <winner> lose: <chips>` — the AND-items of the winner's own guard (from `beatItems`),
+  because breaking any single one lets the target win the group; rows show the same hint after
+  `(target matches too, but an earlier member wins)`. the 1A reset shows its red `INTRO RESET — wipes
   EVERY state flag` line because it clears your whole save. a hint with no known stop renders as a
   dotted `rc-nostop` span, never a dead button. capture-phase listener: the chips sit inside
   clickable step rows AND inside the dismissable banner, so the chip handler must
