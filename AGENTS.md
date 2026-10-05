@@ -88,12 +88,16 @@ panic.
   `breadcrumb_*` (re-read from the save every 1s, timestamp in the stats row proves it). a row
   that is still pending shows the exact missing segment in red (`needs 3AL`) and the setup meta
   lists what the save lacks, so "why is this pending" is always on screen. a `SEEK` step counts
-  as done once the step after it landed — seeking writes nothing and breadcrumb values are
-  write-once, so the seek target itself often never appears. **N** jumps to the
-  next pending step. clicking any step
-  seeks the player to that step's seek-safe time (segment start +3s, clamped before interior
-  impression moments). a seek writes no progress, so jumping mid-route only moves the picture —
-  coverage still only comes from watching through a segment.
+  as done once the step after it landed — seeking writes nothing, and breadcrumb values are
+  write-once, so the seek target itself may never show up as a value. for clicks that resolve through a
+  segment group the row also evaluates that group's shipped preconditions against the live
+  `persistentState_*` flags: it prints `flags ok, click lands here` or `your flags send it to
+  <other member>`, which is how you tell "wrong flags" from "didn't watch it". the footer shows
+  the build stamp — if it isn't the newest, the browser is serving a cached copy (hard reload).
+  **N** jumps to the next pending step. clicking any step seeks the player to that step's
+  seek-safe time (segment start +3s, clamped before interior impression moments); a jump into
+  the middle of a route warns in red, because the impressions before that point are skipped.
+  a seek writes no progress — coverage only comes from watching through a segment.
 - `progress-tracker.js` — backtick toggles the stats overlay. trust the **segments** and
   **choice-points** rows. the **states** row is broken (it counts every key including absent
   ones, so it always reads 100%) — don't report it as real.

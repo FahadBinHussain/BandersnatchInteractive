@@ -4,6 +4,7 @@
 (function () {
   'use strict';
 
+  const RC_VERSION = '2026-10-05.1';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -23,10 +24,11 @@
     '    <button id="rc-next" title="jump to the next pending step (N)">next &rarr;</button>' +
     '  </div>' +
     '  <div id="rc-list"></div>' +
-    '  <footer><kbd>C</kbd> hide &middot; <kbd>N</kbd> jump to next &middot; click any step to jump</footer>' +
+    '  <footer><kbd>C</kbd> hide &middot; <kbd>N</kbd> jump to next &middot; click any step to jump &middot; build <span id="rc-v"></span></footer>' +
     '</aside>' +
     '<div id="rc-toast"></div>';
   document.body.appendChild(root);
+  root.querySelector('#rc-v').textContent = RC_VERSION;
 
   const style = document.createElement('style');
   style.textContent = [
@@ -140,6 +142,41 @@
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0');
   }
 
+  // tiny evaluator for the shipped precondition trees: and / or / not / persistentState / eql
+  let unknownOpWarned = false;
+  function evalReq(expr, flags) {
+    if (expr === null || expr === undefined) return true;
+    if (typeof expr === 'boolean') return expr;
+    if (!Array.isArray(expr)) return false;
+    const op = expr[0];
+    if (op === 'and') return expr.slice(1).every((x) => evalReq(x, flags));
+    if (op === 'or') return expr.slice(1).some((x) => evalReq(x, flags));
+    if (op === 'not') return !evalReq(expr[1], flags);
+    if (op === 'persistentState') return flags[expr[1]] === true || flags[expr[1]] === 'true';
+    if (op === 'eql') return String(flags[expr[1]]) === String(expr[2]);
+    if (!unknownOpWarned) {
+      unknownOpWarned = true;
+      console.warn('[route-console] unknown precondition operator "' + op + '" — treating as false');
+    }
+    return false;
+  }
+
+  function flagsFor(step) {
+    const names = new Set();
+    const collect = (x) => {
+      if (!Array.isArray(x)) return;
+      if (x[0] === 'persistentState') names.add(x[1]);
+      x.forEach(collect);
+    };
+    (step.group || []).forEach((m) => collect(m.req));
+    const out = {};
+    names.forEach((n) => {
+      const v = localStorage.getItem('persistentState_' + n);
+      out[n] = v === 'true' ? true : v === 'false' ? false : v;
+    });
+    return out;
+  }
+
   function stepLabel(st) {
     if (st.k === 'seek') return 'jump to <em>' + st.seg + '</em>';
     if (st.k === 'click') {
@@ -230,7 +267,14 @@
               // holds, that is almost always where the click actually landed
               const got = (st.siblings || []).filter((x) => x !== target && covered.has(x));
               const have = got.length ? got.slice(0, 3).join('/') + (got.length > 3 ? ' +' + (got.length - 3) : '') : '';
-              why.textContent = 'needs ' + target + (have ? ' (also have ' + have + ')' : '');
+              let now = '';
+              if (st.group && st.group.length) {
+                const landed = st.group.find((m) => evalReq(m.req, flagsFor(st)));
+                now = !landed ? ' · no member matches your flags'
+                  : landed.seg === target ? ' · flags ok, click lands here'
+                  : ' · your flags send it to ' + landed.seg;
+              }
+              why.textContent = 'needs ' + target + (have ? ' (also have ' + have + ')' : '') + now;
             }
           }
           if (!sdone && target && missing.indexOf(target) < 0) missing.push(target);
@@ -336,5 +380,5 @@
   build();
   setInterval(refresh, 1000);
   window.__routeConsole = { toggle, refresh, jump, toast };
-  console.log('route console ready — press C to toggle, N for the next pending step');
+  console.log('route console ' + RC_VERSION + ' ready — press C to toggle, N for the next pending step');
 })();

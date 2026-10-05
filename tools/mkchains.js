@@ -45,13 +45,15 @@ function choiceInfo(seg, label) {
       const group = c.sg && bv.segmentGroups[c.sg];
       return {
         sg: c.sg || null,
-        siblings: group
-          ? bv.segmentGroups[c.sg].map((x) => (typeof x === 'string' ? x : x.segment)).filter(Boolean)
+        members: group
+          ? bv.segmentGroups[c.sg]
+              .filter((x) => x && x.segment)
+              .map((x) => ({ seg: x.segment, req: x.precondition ? bv.preconditions[x.precondition] : null }))
           : [],
       };
     }
   }
-  return { sg: null, siblings: [] };
+  return { sg: null, members: [] };
 }
 
 // two constraints on where a seek may land:
@@ -110,8 +112,11 @@ function stepData(raw) {
     row.k = 'click';
     row.label = label;
     row.choiceAt = choiceMs(seg, label);
-    if (info.sg) row.via = info.sg;
-    if (info.siblings.length) row.siblings = info.siblings;
+    if (info.sg) {
+      row.via = info.sg;
+      row.group = info.members;
+      row.siblings = info.members.map((m) => m.seg);
+    }
   }
   return row;
 }
