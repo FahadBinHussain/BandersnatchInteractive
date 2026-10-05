@@ -229,7 +229,8 @@
               // this click resolves through a segment group: name the member the save already
               // holds, that is almost always where the click actually landed
               const got = (st.siblings || []).filter((x) => x !== target && covered.has(x));
-              why.textContent = 'needs ' + target + (got.length ? ' (got ' + got.join('/') + ')' : '');
+              const have = got.length ? got.slice(0, 3).join('/') + (got.length > 3 ? ' +' + (got.length - 3) : '') : '';
+              why.textContent = 'needs ' + target + (have ? ' (also have ' + have + ')' : '');
             }
           }
           if (!sdone && target && missing.indexOf(target) < 0) missing.push(target);
