@@ -157,6 +157,30 @@ function groupMembers(key, depth) {
 function labelOf(seg, c) {
   return (en[seg] && en[seg][c.id]) || c.text || c.id;
 }
+// a moment with defaultChoiceIndex whose window reaches the segment end auto-fires when
+// playback crosses the boundary: addChoices stamps nextChoice from the default at
+// momentStart, and momentEnd (which would reset it) runs only after playNextSegment — so the
+// choice branch wins over defaultNext and resolves the choice's GROUP by flags. record that
+// group (and its order) or the stop would promise a landing the save may never give.
+//   object = auto-choice drives the hop (with the group to guard by)
+//   null   = the auto-choice leads somewhere that never reaches dest: hop is dead
+//   undefined = no default choice: plain watch-the-predecessor-out defaultNext hop
+function autoChoiceHop(pseg, dest) {
+  const p = segments[pseg];
+  for (const m of bv.momentsBySegment[pseg] || []) {
+    if (!m.choices || !(m.defaultChoiceIndex >= 0)) continue;
+    if ((m.endMs || 0) < p.endTimeMs - 100) continue; // window closed before the boundary, momentEnd resets nextChoice in time
+    const c = m.choices[m.defaultChoiceIndex];
+    if (!c) continue;
+    if (c.segmentId) return c.segmentId === dest ? { click: labelOf(pseg, c), clickAt: m.startMs } : null;
+    if (c.sg) {
+      const guard = groupMembers(c.sg);
+      return guard.some((mm) => mm.seg === dest) ? { click: labelOf(pseg, c), clickAt: m.startMs, guard, grp: true } : null;
+    }
+    return null;
+  }
+  return undefined;
+}
 function playInPredecessors(seg, atMs) {
   const s = segments[seg];
   const base = Math.max(0, atMs - s.startTimeMs);
@@ -165,11 +189,18 @@ function playInPredecessors(seg, atMs) {
     const p = segments[pseg];
     // defaultNext: watch the predecessor out, the player walks to seg on its own — but a
     // segment with its own group resolves that group FIRST (nextChoice → selfgroup →
-    // defaultNext), so it would never reach defaultNext while a member matches: skip it
+    // defaultNext), so it would never reach defaultNext while a member matches: skip it.
+    // a default-choice moment covering the boundary also preempts defaultNext (auto fires
+    // into its group): keep the hop only if that choice can still land on seg.
     if (p.defaultNext === seg && !bv.segmentGroups[pseg]) {
-      const at = seekMs(pseg, true);
-      if (p.endTimeMs - at >= 1000) {
-        out.push({ cost: Math.max(0, p.endTimeMs - at) + base, stop: { seg: pseg, at, hopEnd: p.endTimeMs, dest: seg, watch: atMs } });
+      const auto = autoChoiceHop(pseg, seg);
+      if (auto !== null) {
+        const at = seekMs(pseg, true);
+        if (p.endTimeMs - at >= 1000) {
+          const stop = { seg: pseg, at, hopEnd: p.endTimeMs, dest: seg, watch: atMs };
+          if (auto) Object.assign(stop, auto, { fallback: p.defaultNext || null });
+          out.push({ cost: Math.max(0, p.endTimeMs - at) + base, stop });
+        }
       }
     }
   }
@@ -178,19 +209,27 @@ function playInPredecessors(seg, atMs) {
     const p = segments[pseg];
     const at = seekMs(pseg, true);
     if (p.endTimeMs - at >= 1000) {
-      // grp: the player takes the FIRST member the flags allow, so landing here is not
-      // guaranteed — the console must say so instead of promising the destination
-      out.push({ cost: Math.max(0, p.endTimeMs - at) + base, stop: { seg: pseg, at, hopEnd: p.endTimeMs, dest: seg, watch: atMs, grp: true } });
+      // selfgroup hop: the player takes the FIRST member the flags allow, so landing here is
+      // not guaranteed — ship the group order as a guard so the console can say which member
+      // the live flags actually win with
+      out.push({ cost: Math.max(0, p.endTimeMs - at) + base, stop: { seg: pseg, at, hopEnd: p.endTimeMs, dest: seg, watch: atMs, guard: groupMembers(pseg), grp: true, fallback: p.defaultNext || null } });
     }
   }
   for (const pseg of Object.keys(bv.momentsBySegment)) {
     if (!segments[pseg]) continue;
     for (const m of bv.momentsBySegment[pseg] || []) {
       for (const c of m.choices || []) {
-        if (c.segmentId !== seg) continue;
+        // a click either names the segment directly (always lands) or resolves a group by
+        // flags — ship that group's order as a guard so the landing check matches the player
+        let guard = null;
+        if (c.segmentId === seg) { /* direct: unconditional */ }
+        else if (c.sg && groupMembers(c.sg).some((mm) => mm.seg === seg)) guard = groupMembers(c.sg);
+        else continue;
         const at = choiceSeek(pseg, m);
         if (at === null) continue;
-        out.push({ cost: Math.max(0, m.startMs - at) + base, stop: { seg: pseg, at, click: labelOf(pseg, c), clickAt: m.startMs, dest: seg, watch: atMs } });
+        const stop = { seg: pseg, at, click: labelOf(pseg, c), clickAt: m.startMs, dest: seg, watch: atMs };
+        if (guard) { stop.guard = guard; stop.grp = true; stop.fallback = segments[pseg].defaultNext || null; }
+        out.push({ cost: Math.max(0, m.startMs - at) + base, stop });
       }
     }
   }
@@ -206,6 +245,15 @@ function choiceSeek(seg, m) {
   if (at >= (m.endMs || Infinity)) return null;
   return at;
 }
+// one entry per (flag, value) is not enough: the cheapest writer often only lands under
+// flags the save doesn't have (e.g. the SS54 WHO'S THERE click needs p_bup && p_vs='k',
+// while R3cd is a plain seek-and-watch that always works) — so ship ranked candidates and
+// let the console pick the first whose guard the LIVE flags satisfy, showing every reject
+// with its reason when none fit. identity = the TRIP, not the landing: one "jump SS54 +
+// click WHO'S THERE" serves every group member that writes the flag (which member lands is
+// decided by the live flags), so those merge into one stop carrying the full set of
+// flag-writing destinations. the 1A intro reset is the universal escape hatch: always kept.
+const MAX_STOPS = 6;
 const stopsOut = {};
 function consider(flag, v, stop, side) {
   if (!stop) return;
@@ -213,8 +261,24 @@ function consider(flag, v, stop, side) {
   if (side && side.length) stop.side = side;
   const bag = (stopsOut[flag] = stopsOut[flag] || {});
   const key = String(v);
-  const prev = bag[key];
-  if (!prev || stopCost(stop) < stopCost(prev)) bag[key] = stop;
+  const list = (bag[key] = bag[key] || []);
+  const sig = stop.seg + (stop.click ? '|' + stop.click : stop.hopEnd ? '|hop' : '|watch' + (stop.watch || '')) +
+    (stop.guard ? '|g' + stop.guard.map((m) => m.seg).join(',') : '|' + (stop.dest || ''));
+  const dup = list.find((s) => s.sig === sig);
+  if (dup) {
+    // same trip, another flag-writing landing: keep the cheapest timing, union the targets
+    if (stop.guard && stop.dest && dup.targets.indexOf(stop.dest) < 0) dup.targets.push(stop.dest);
+    if (stop.side && stop.side.length) dup.side = [...new Set((dup.side || []).concat(stop.side))];
+    return;
+  }
+  if (stop.guard && stop.dest) stop.targets = [stop.dest];
+  Object.defineProperty(stop, 'sig', { value: sig, enumerable: false });
+  list.push(stop);
+  list.sort((a, b) => stopCost(a) - stopCost(b));
+  if (!stop.nuclear) {
+    const normal = list.filter((s) => !s.nuclear);
+    if (normal.length > MAX_STOPS) list.splice(list.indexOf(normal[MAX_STOPS]), 1);
+  }
 }
 function stopCost(s) {
   // seconds of watching, from the seek target to the moment that writes the flag
@@ -248,10 +312,12 @@ for (const [seg, ms] of Object.entries(bv.momentsBySegment)) {
 {
   const seen = new Set();
   for (const bag of Object.values(stopsOut)) {
-    for (const s of Object.values(bag)) {
-      if (seen.has(s.seg)) continue;
-      seen.add(s.seg);
-      seekMs(s.seg);
+    for (const list of Object.values(bag)) {
+      for (const s of list) {
+        if (seen.has(s.seg)) continue;
+        seen.add(s.seg);
+        seekMs(s.seg);
+      }
     }
   }
 }
@@ -309,4 +375,6 @@ fs.writeFileSync(path.join(repo, 'ROUTE.md'),
 fs.writeFileSync(path.join(repo, 'route-data.js'),
   '// generated by tools/mkchains.js from the planner output — do not edit by hand\n' +
   'window.ROUTE_DATA = ' + JSON.stringify({ summary: d.summary, chains: chainsData, setups: setupsData, stops: stopsOut }) + ';\n');
-console.log('chains', chainsData.length, 'setups', setupsData.length, 'stops', Object.keys(stopsOut).length, '-> ROUTE.md + tools/chains.txt + route-data.js');
+let stopCount = 0;
+for (const bag of Object.values(stopsOut)) for (const list of Object.values(bag)) stopCount += list.length;
+console.log('chains', chainsData.length, 'setups', setupsData.length, 'stops', stopCount, '(' + Object.keys(stopsOut).length + ' flags) -> ROUTE.md + tools/chains.txt + route-data.js');

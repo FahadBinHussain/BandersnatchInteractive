@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-05.5';
+  const RC_VERSION = '2026-10-05.6';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -67,6 +67,9 @@
     ' background:rgba(14,44,36,.92);color:#eafff8;font-size:11px;line-height:1.55;cursor:pointer}',
     '#rc-do.rc-on{display:block;animation:rc-pop .35s cubic-bezier(.2,.9,.3,1.4)}',
     '#rc-do.rc-nuclear{border-color:#ff6b6b;background:rgba(64,14,14,.94);color:#ffd7d7}',
+    '#rc-do.rc-nofit{border-color:#ff6b6b;background:rgba(64,14,14,.94);color:#ffd7d7;animation:rc-shake .4s}',
+    '#rc-do .rc-reject{padding:3px 0;border-top:1px dashed rgba(255,107,107,.35);color:#ffc9c9}',
+    '@keyframes rc-shake{0%,100%{transform:none}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}',
     '#rc-do b{color:#7CFFB2}#rc-do .rc-warn{color:#ff6b6b}',
     '#rc-do i{color:#8fb3aa;font-style:normal}',
     // fix chips on the red "needs …" rows: click one and the banner above tells you the stop
@@ -257,6 +260,45 @@
     return out;
   }
 
+  // live flag values for every persistentState key a ranked stop list's guards touch
+  function flagsForStops(list) {
+    const names = new Set();
+    const collect = (x) => {
+      if (!Array.isArray(x)) return;
+      if (x[0] === 'persistentState') names.add(x[1]);
+      x.forEach(collect);
+    };
+    list.forEach((s) => (s.guard || []).forEach((m) => collect(m.req)));
+    const out = {};
+    names.forEach((n) => {
+      const v = localStorage.getItem('persistentState_' + n);
+      try { out[n] = JSON.parse(v); } catch (e) { out[n] = v; }
+    });
+    return out;
+  }
+
+  // does this stop actually deliver its promise under the live flags? a guarded stop lands
+  // on the FIRST group member the flags allow — the trip only works when that member is one
+  // of the flag-writing destinations this stop merged (targets). no guard = unconditional.
+  function stopFit(s, fl) {
+    if (!s.guard) return { ok: true };
+    const landed = s.guard.find((m) => evalReq(m.req, fl));
+    if (!landed) {
+      return { ok: false, why: 'no group member matches your flags' + (s.fallback ? ' &rarr; goes to ' + esc(s.fallback) : ''), miss: targetMisses(s, fl) };
+    }
+    if ((s.targets || []).indexOf(landed.seg) >= 0) return { ok: true, landed };
+    return { ok: false, why: 'your flags send it to <b>' + esc(landed.seg) + '</b>', miss: targetMisses(s, fl) };
+  }
+  // what still blocks the flag-writing members (fix chips shown next to a reject reason)
+  function targetMisses(s, fl) {
+    const out = [];
+    for (const t of s.targets || []) {
+      const m = s.guard.find((x) => x.seg === t);
+      if (m) failing(m.req, fl, out);
+    }
+    return out;
+  }
+
   function stepLabel(st) {
     if (st.k === 'seek') return 'jump to <em>' + st.seg + '</em>';
     if (st.k === 'click') {
@@ -320,7 +362,11 @@
     let l = 'jump <b>' + esc(s.seg) + '</b> at ' + fmt(s.at);
     if (s.click) l += ' &middot; click <b>&quot;' + esc(s.click) + '&quot;</b> at ' + fmt(s.clickAt);
     if (s.hopEnd) l += ' &middot; watch to ' + fmt(s.hopEnd);
-    if (s.dest) l += ' &rarr; ' + esc(s.dest) + (s.grp ? ' <i>&larr; segment group: the first member your flags allow wins, not necessarily this one</i>' : '');
+    if (s.dest) {
+      // a merged trip serves every flag-writing landing: show them all, not just the first
+      const dests = s.targets && s.targets.length > 1 ? s.targets.join('/') : s.dest;
+      l += ' &rarr; ' + esc(dests) + (s.grp ? ' <i>&larr; segment group: the first member your flags allow wins, not necessarily this one</i>' : '');
+    }
     if (s.watch != null) {
       const base = startOf(s.dest || s.seg);
       const near = base != null && s.watch - base <= 1500;
@@ -332,14 +378,51 @@
     return l;
   }
 
-  // a "fix p_x" chip: show the stop in the banner, then jump to where it starts
-  function applyFix(flag, want) {
-    const stop = DATA.stops && DATA.stops[flag] && DATA.stops[flag][String(want)];
-    if (!stop) {
+  // a "fix p_x" chip: a ranked candidate list ships for each (flag, value) — pick the first
+  // NON-nuclear route whose guard the LIVE flags satisfy and jump there. when none fit, say
+  // so loudly: every candidate with the exact reason it rejects + the chips that would
+  // change the verdict, and offer the 1A reset as an explicit destructive choice (never
+  // auto-jump it — it wipes the whole save). only flags whose sole writer IS the reset
+  // (force or otherwise) take the nuclear path directly.
+  function applyFix(flag, want, force) {
+    const list = DATA.stops && DATA.stops[flag] && DATA.stops[flag][String(want)];
+    if (!Array.isArray(list) || !list.length) {
       toast('no stop generated for ' + flag + '=' + want, true);
       return;
     }
     const doEl = root.querySelector('#rc-do');
+    const fl = flagsForStops(list);
+    const fits = list.map((s) => stopFit(s, fl));
+    let pick = fits.findIndex((f, k) => f.ok && !list[k].nuclear);
+    const nuclearIdx = list.findIndex((s) => s.nuclear);
+    if (pick < 0) {
+      const onlyNuclear = nuclearIdx >= 0 && list.every((s) => s.nuclear);
+      if (!force && !onlyNuclear) {
+        doEl.classList.remove('rc-nuclear');
+        doEl.classList.add('rc-nofit');
+        doEl.innerHTML = '<b>' + esc(flag) + ' &rarr; ' + esc(want) + ' &mdash; NO stop fits your flags:</b>' +
+          list.map((s, k) => {
+            if (s.nuclear) {
+              return '<div class="rc-reject">' + stopLine(s) + ' &middot; always works, but <b>wipes EVERY state flag</b>' +
+                ' &middot; <button class="rc-fix" data-flag="' + esc(flag) + '" data-want="' + esc(want) +
+                '" data-force="1" title="the 1A reset clears every flag in the save">do it anyway &#8599;</button></div>';
+            }
+            return '<div class="rc-reject">' + stopLine(s) + ' &middot; ' + (fits[k].why || '') +
+              (fits[k].miss && fits[k].miss.length ? ' &middot; fix ' + fits[k].miss.slice(0, 3).map((d) => fixChip(d, fl)).join(' ') : '') +
+              '</div>';
+          }).join('');
+        doEl.classList.add('rc-on');
+        toast('no ' + flag + '=' + want + ' stop fits your flags — see the banner', true);
+        return;
+      }
+      pick = nuclearIdx;
+    }
+    if (pick < 0) {
+      toast('no usable stop for ' + flag + '=' + want, true);
+      return;
+    }
+    doEl.classList.remove('rc-nofit');
+    const stop = list[pick];
     doEl.classList.toggle('rc-nuclear', !!stop.nuclear);
     doEl.innerHTML =
       (stop.nuclear ? '<b class="rc-warn">INTRO RESET &mdash; wipes EVERY state flag (anything you set earlier dies)</b><br>' : '') +
@@ -517,14 +600,15 @@
     root.querySelectorAll('#rc-actions button[data-filter]').forEach((x) => x.classList.toggle('rc-on', x === b));
     refresh();
   }));
-  // capture phase: the fix/goto chips sit inside a clickable step row, and the row's own
-  // listener would otherwise fire first and seek to the step instead of the stop
-  list.addEventListener('click', (e) => {
+  // capture phase: the fix/goto chips sit inside clickable step rows AND inside the
+  // dismissable banner — stopPropagation must run first, or the row jump / banner dismiss
+  // would fire instead of the chip
+  function chipClick(e) {
     if (!(e.target instanceof Element)) return;
     const fix = e.target.closest('.rc-fix');
     if (fix) {
       e.stopPropagation();
-      applyFix(fix.dataset.flag, fix.dataset.want);
+      applyFix(fix.dataset.flag, fix.dataset.want, fix.dataset.force === '1');
       return;
     }
     const go = e.target.closest('.rc-goto');
@@ -532,8 +616,10 @@
       e.stopPropagation();
       gotoSeg(go.dataset.seg);
     }
-  }, true);
-  root.querySelector('#rc-do').addEventListener('click', function () { this.classList.remove('rc-on'); });
+  }
+  list.addEventListener('click', chipClick, true);
+  root.querySelector('#rc-do').addEventListener('click', chipClick, true);
+  root.querySelector('#rc-do').addEventListener('click', function () { this.classList.remove('rc-on', 'rc-nofit'); });
   document.addEventListener('keydown', (e) => {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const tag = (e.target && e.target.tagName) || '';
