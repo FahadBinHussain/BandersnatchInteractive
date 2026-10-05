@@ -115,10 +115,12 @@ panic.
   expansion + first-match evaluation as the rows) plus `fallback` (what the player does when no
   member matches: fall through to `defaultNext`). `applyFix` picks the first **non-nuclear**
   candidate whose guard the live flags satisfy; when none fit it shows a red `NO stop fits your
-  flags` banner with every candidate, the exact reject reason (`your flags send it to <member>` /
-  `no group member matches`), inline `fix <flag>` chips that would change the verdict, and an
-  explicit "do it anyway" button for the 1A reset — nuclear is **never auto-jumped** unless it's
-  the flag's sole writer (e.g. `p_pr=false`). the 1A reset shows its red `INTRO RESET — wipes
+  flags` banner **led by a `first: <fix> ↗ — N of M routes need it` headline** (the clickable fix
+  shared by the most rejects — fix that first, then re-click the hint), then every candidate with
+  the exact reject reason (`your flags send it to <member>` / `no group member matches`), inline
+  `fix <flag>` chips that would change the verdict, and an explicit "do it anyway" button for the
+  1A reset — nuclear is **never auto-jumped** unless it's the flag's sole writer (e.g.
+  `p_pr=false`). the 1A reset shows its red `INTRO RESET — wipes
   EVERY state flag` line because it clears your whole save. a hint with no known stop renders as a
   dotted `rc-nostop` span, never a dead button. capture-phase listener: the chips sit inside
   clickable step rows AND inside the dismissable banner, so the chip handler must

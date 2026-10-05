@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-05.6';
+  const RC_VERSION = '2026-10-05.7';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -69,6 +69,8 @@
     '#rc-do.rc-nuclear{border-color:#ff6b6b;background:rgba(64,14,14,.94);color:#ffd7d7}',
     '#rc-do.rc-nofit{border-color:#ff6b6b;background:rgba(64,14,14,.94);color:#ffd7d7;animation:rc-shake .4s}',
     '#rc-do .rc-reject{padding:3px 0;border-top:1px dashed rgba(255,107,107,.35);color:#ffc9c9}',
+    '#rc-do .rc-first{padding:2px 0 6px;color:#ffd98a;font-weight:700}',
+    '#rc-do .rc-first span{color:#8fb3aa;font-weight:400}',
     '@keyframes rc-shake{0%,100%{transform:none}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}',
     '#rc-do b{color:#7CFFB2}#rc-do .rc-warn{color:#ff6b6b}',
     '#rc-do i{color:#8fb3aa;font-style:normal}',
@@ -356,8 +358,9 @@
     toast(msg, !!mid);
   }
 
-  // one line describing a generated stop (route-data.js stops[flag][value]), in watch order
-  function stopLine(s) {
+  // one line describing a generated stop (route-data.js stops[flag][value]), in watch order.
+  // noGrp: drop the "first member wins" italic — reject lines below already say where you'd land
+  function stopLine(s, noGrp) {
     const startOf = (x) => (window.segmentMap && segmentMap.segments[x] ? segmentMap.segments[x].startTimeMs : null);
     let l = 'jump <b>' + esc(s.seg) + '</b> at ' + fmt(s.at);
     if (s.click) l += ' &middot; click <b>&quot;' + esc(s.click) + '&quot;</b> at ' + fmt(s.clickAt);
@@ -365,7 +368,7 @@
     if (s.dest) {
       // a merged trip serves every flag-writing landing: show them all, not just the first
       const dests = s.targets && s.targets.length > 1 ? s.targets.join('/') : s.dest;
-      l += ' &rarr; ' + esc(dests) + (s.grp ? ' <i>&larr; segment group: the first member your flags allow wins, not necessarily this one</i>' : '');
+      l += ' &rarr; ' + esc(dests) + (s.grp && !noGrp ? ' <i>&larr; segment group: the first member your flags allow wins, not necessarily this one</i>' : '');
     }
     if (s.watch != null) {
       const base = startOf(s.dest || s.seg);
@@ -398,16 +401,35 @@
     if (pick < 0) {
       const onlyNuclear = nuclearIdx >= 0 && list.every((s) => s.nuclear);
       if (!force && !onlyNuclear) {
+        // lead with the ONE fix that unblocks the most routes — the reject list below is the
+        // detail, the first line is the next click
+        const missCount = new Map();
+        list.forEach((s, k) => {
+          if (s.nuclear) return;
+          (fits[k].miss || []).forEach((d) => missCount.set(d, (missCount.get(d) || 0) + 1));
+        });
+        let top = null, topN = 0;
+        missCount.forEach((n, d) => {
+          if (n <= topN) return;
+          if (fixChip(d, fl).indexOf('<button') < 0) return; // only a clickable fix may be the headline
+          top = d;
+          topN = n;
+        });
+        const normalCount = list.filter((s) => !s.nuclear).length;
+        const summary = top
+          ? '<div class="rc-first">first: ' + fixChip(top, fl) + ' <span>&mdash; ' + topN + ' of ' + normalCount +
+            ' routes need it; after watching that stop, click <b>fix ' + esc(flag) + '</b> again</span></div>'
+          : '';
         doEl.classList.remove('rc-nuclear');
         doEl.classList.add('rc-nofit');
-        doEl.innerHTML = '<b>' + esc(flag) + ' &rarr; ' + esc(want) + ' &mdash; NO stop fits your flags:</b>' +
+        doEl.innerHTML = '<b>' + esc(flag) + ' &rarr; ' + esc(want) + ' &mdash; NO stop fits your flags:</b>' + summary +
           list.map((s, k) => {
             if (s.nuclear) {
-              return '<div class="rc-reject">' + stopLine(s) + ' &middot; always works, but <b>wipes EVERY state flag</b>' +
+              return '<div class="rc-reject">' + stopLine(s, true) + ' &middot; always works, but <b>wipes EVERY state flag</b>' +
                 ' &middot; <button class="rc-fix" data-flag="' + esc(flag) + '" data-want="' + esc(want) +
                 '" data-force="1" title="the 1A reset clears every flag in the save">do it anyway &#8599;</button></div>';
             }
-            return '<div class="rc-reject">' + stopLine(s) + ' &middot; ' + (fits[k].why || '') +
+            return '<div class="rc-reject">' + stopLine(s, true) + ' &middot; ' + (fits[k].why || '') +
               (fits[k].miss && fits[k].miss.length ? ' &middot; fix ' + fits[k].miss.slice(0, 3).map((d) => fixChip(d, fl)).join(' ') : '') +
               '</div>';
           }).join('');
