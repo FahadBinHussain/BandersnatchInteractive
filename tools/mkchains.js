@@ -45,11 +45,10 @@ function choiceInfo(seg, label) {
       const group = c.sg && bv.segmentGroups[c.sg];
       return {
         sg: c.sg || null,
-        members: group
-          ? bv.segmentGroups[c.sg]
-              .filter((x) => x && x.segment)
-              .map((x) => ({ seg: x.segment, req: x.precondition ? bv.preconditions[x.precondition] : null }))
-          : [],
+        // every member, including plain-string entries like "8KB" — filtering to
+        // {segment} objects only silently dropped the string members and made the panel
+        // report a later object member (0Cr4) as the landing
+        members: group ? groupMembers(c.sg) : [],
       };
     }
   }
@@ -136,8 +135,14 @@ function groupMembers(key, depth) {
   if (!raw || depth > 3) return [];
   const out = [];
   for (const m of raw) {
-    if (m && m.segmentGroup) out.push(...groupMembers(m.segmentGroup, depth + 1));
-    else if (m && m.segment) out.push({ seg: m.segment, req: m.precondition ? bv.preconditions[m.precondition] : null });
+    if (m && m.segmentGroup) {
+      // a nested group entry can carry its own precondition: the player checks it before
+      // descending, so AND it onto every expanded member instead of dropping it
+      const outer = m.precondition ? bv.preconditions[m.precondition] : null;
+      for (const mm of groupMembers(m.segmentGroup, depth + 1)) {
+        out.push({ seg: mm.seg, req: outer ? (mm.req ? ['and', outer, mm.req] : outer) : mm.req });
+      }
+    } else if (m && m.segment) out.push({ seg: m.segment, req: m.precondition ? bv.preconditions[m.precondition] : null });
     else if (typeof m === 'string') out.push({ seg: m, req: bv.preconditions[m] || null });
   }
   return out;
