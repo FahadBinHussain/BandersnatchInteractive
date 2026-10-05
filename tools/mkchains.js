@@ -117,8 +117,30 @@ function stepData(raw) {
       row.group = info.members;
       row.siblings = info.members.map((m) => m.seg);
     }
+  } else if (bv.segmentGroups[seg]) {
+    // "let play" hops resolve the outgoing segment group of the segment you are leaving —
+    // same flag gate as a group click, so the row gets the same members + a defaultNext
+    // fallback for when nothing matches (the player then falls through to defaultNext).
+    row.group = groupMembers(seg);
+    row.siblings = row.group.map((m) => m.seg);
+    row.fallback = segments[seg].defaultNext || null;
   }
   return row;
+}
+
+// same thing for a "let it play" hop: the player resolves the *outgoing* segment group of the
+// segment you are leaving, so the row needs that group's members + preconditions too.
+function groupMembers(key, depth) {
+  depth = depth || 0;
+  const raw = bv.segmentGroups[key];
+  if (!raw || depth > 3) return [];
+  const out = [];
+  for (const m of raw) {
+    if (m && m.segmentGroup) out.push(...groupMembers(m.segmentGroup, depth + 1));
+    else if (m && m.segment) out.push({ seg: m.segment, req: m.precondition ? bv.preconditions[m.precondition] : null });
+    else if (typeof m === 'string') out.push({ seg: m, req: bv.preconditions[m] || null });
+  }
+  return out;
 }
 
 // raw plan steps are "HH:MM:SS SEG → action → dest"; the head is the segment start, but the

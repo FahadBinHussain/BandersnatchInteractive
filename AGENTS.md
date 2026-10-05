@@ -89,10 +89,12 @@ panic.
   that is still pending shows the exact missing segment in red (`needs 3AL`) and the setup meta
   lists what the save lacks, so "why is this pending" is always on screen. a `SEEK` step counts
   as done once the step after it landed — seeking writes nothing, and breadcrumb values are
-  write-once, so the seek target itself may never show up as a value. for clicks that resolve through a
-  segment group the row also evaluates that group's shipped preconditions against the live
-  `persistentState_*` flags: it prints `flags ok, click lands here` or `your flags send it to
-  <other member>`, which is how you tell "wrong flags" from "didn't watch it". the footer shows
+  write-once, so the seek target itself may never show up as a value. a step that lands through a
+  segment group (a group click, or any `let play` hop) carries that group's members + the shipped
+  preconditions, evaluated live against `persistentState_*` with the same and/or/not/eql semantics
+  as `preconditionToJS`: the row prints `flags ok, plays here`, `your flags send it to <other
+  member>`, or `fix <flag>` naming exactly the flags blocking the target — that is how you tell
+  "wrong flags" from "didn't watch it". the footer shows
   the build stamp — if it isn't the newest, the browser is serving a cached copy (hard reload).
   **N** jumps to the next pending step. clicking any step seeks the player to that step's
   seek-safe time (segment start +3s, clamped before interior impression moments); a jump into
@@ -122,6 +124,17 @@ isn't enterable. things that were fixed once and must stay fixed:
   "enter" segments you actually can't.
 - keep state dedup to a parent-pointer BFS with a cap, or the full-state set OOMs.
 - `MAXEXP` env var caps expansions when a run gets too slow.
+
+## headless check of the console
+
+`msedge.exe` is a launcher: `& $edge ... --dump-dom` returns as soon as the launcher exits, so the
+captured output is empty and every assert looks like a miss. run it with
+`Start-Process -FilePath $edge -ArgumentList @(...) -Wait -PassThru -NoNewWindow
+-RedirectStandardOutput <file>` and read the file. always give it a fresh `--user-data-dir` (a
+reused profile serves cached JS and the build stamp silently stays old) and point it at a scratch
+page — `C:\tmp\rctest\index2.html`, served on 8001 — that seeds `persistentState_*` keys, loads
+`route-data.js` + `route-console.js` from 8000, and writes the assert result into a `data-out`
+body attribute for a regex.
 
 ## shipping
 

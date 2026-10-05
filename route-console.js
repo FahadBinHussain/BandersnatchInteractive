@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-05.1';
+  const RC_VERSION = '2026-10-05.2';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -142,23 +142,56 @@
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0');
   }
 
-  // tiny evaluator for the shipped precondition trees: and / or / not / persistentState / eql
+  // tiny evaluator for the shipped precondition trees, mirroring scripts.js
+  // preconditionToJS: and / or / not / persistentState / eql, with eql as a loose == on the
+  // parsed flag value (so p_ps == 't' compares 't', not '"t"' and not true).
   let unknownOpWarned = false;
-  function evalReq(expr, flags) {
-    if (expr === null || expr === undefined) return true;
-    if (typeof expr === 'boolean') return expr;
-    if (!Array.isArray(expr)) return false;
+  function val(expr, flags) {
+    if (expr === null || expr === undefined) return null;
+    if (typeof expr !== 'object') return expr;
     const op = expr[0];
-    if (op === 'and') return expr.slice(1).every((x) => evalReq(x, flags));
-    if (op === 'or') return expr.slice(1).some((x) => evalReq(x, flags));
-    if (op === 'not') return !evalReq(expr[1], flags);
-    if (op === 'persistentState') return flags[expr[1]] === true || flags[expr[1]] === 'true';
-    if (op === 'eql') return String(flags[expr[1]]) === String(expr[2]);
+    if (op === 'persistentState') return flags[expr[1]];
+    if (op === 'not') return !val(expr[1], flags);
+    if (op === 'and') return expr.slice(1).every((x) => val(x, flags));
+    if (op === 'or') return expr.slice(1).some((x) => val(x, flags));
+    if (op === 'eql') return val(expr[1], flags) == val(expr[2], flags);
     if (!unknownOpWarned) {
       unknownOpWarned = true;
       console.warn('[route-console] unknown precondition operator "' + op + '" — treating as false');
     }
     return false;
+  }
+  const evalReq = (expr, flags) => !!val(expr, flags);
+
+  // the flag names a condition needs, for "fix <names>" hints
+  function describeCond(expr) {
+    if (!Array.isArray(expr)) return '?';
+    const op = expr[0];
+    if (op === 'persistentState') return expr[1];
+    if (op === 'eql') {
+      const lhs = Array.isArray(expr[1]) ? describeCond(expr[1]) : String(expr[1]);
+      return lhs + '=' + expr[2];
+    }
+    if (op === 'not') {
+      const inner = expr[1];
+      if (Array.isArray(inner)) return '!' + describeCond(inner);
+      return '!(' + inner + ')';
+    }
+    if (op === 'or') return '(' + expr.slice(1).map(describeCond).join('|') + ')';
+    if (op === 'and') return expr.slice(1).map(describeCond).join(' & ');
+    return '?';
+  }
+  // flatten a failing 'and' so the panel can say WHICH flag is missing, not just "needs X"
+  function failing(expr, flags, out) {
+    if (!Array.isArray(expr)) return;
+    if (expr[0] === 'and') {
+      expr.slice(1).forEach((x) => failing(x, flags, out));
+      return;
+    }
+    if (!evalReq(expr, flags)) {
+      const d = describeCond(expr);
+      if (out.indexOf(d) < 0) out.push(d);
+    }
   }
 
   function flagsFor(step) {
@@ -172,7 +205,7 @@
     const out = {};
     names.forEach((n) => {
       const v = localStorage.getItem('persistentState_' + n);
-      out[n] = v === 'true' ? true : v === 'false' ? false : v;
+      try { out[n] = JSON.parse(v); } catch (e) { out[n] = v; }
     });
     return out;
   }
@@ -262,19 +295,27 @@
           const why = list.querySelector('[data-why="' + kind + '-' + it.n + '-' + i + '"]');
           if (why) {
             if (sdone) why.textContent = '';
-            else {
-              // this click resolves through a segment group: name the member the save already
-              // holds, that is almost always where the click actually landed
+            else if (st.group && st.group.length) {
+              // the destination resolves through a segment group: say where the *live* flags
+              // would send it, and name the flags that block the target
+              const fl = flagsFor(st);
+              const landed = st.group.find((m) => evalReq(m.req, fl));
+              const tgt = st.group.find((m) => m.seg === target);
+              let msg = 'needs ' + target;
+              if (tgt && evalReq(tgt.req, fl)) {
+                msg += st.k === 'click' ? ' · flags ok, click lands here' : ' · flags ok, plays here';
+              } else {
+                if (landed && landed.seg !== target) msg += ' · your flags send it to ' + landed.seg;
+                const miss = [];
+                if (tgt) failing(tgt.req, fl, miss);
+                if (miss.length) msg += ' · fix ' + miss.slice(0, 4).join(' ');
+                else if (!landed) msg += st.fallback ? ' · no member matches, goes to ' + st.fallback : ' · no member matches your flags';
+              }
+              why.textContent = msg;
+            } else {
               const got = (st.siblings || []).filter((x) => x !== target && covered.has(x));
               const have = got.length ? got.slice(0, 3).join('/') + (got.length > 3 ? ' +' + (got.length - 3) : '') : '';
-              let now = '';
-              if (st.group && st.group.length) {
-                const landed = st.group.find((m) => evalReq(m.req, flagsFor(st)));
-                now = !landed ? ' · no member matches your flags'
-                  : landed.seg === target ? ' · flags ok, click lands here'
-                  : ' · your flags send it to ' + landed.seg;
-              }
-              why.textContent = 'needs ' + target + (have ? ' (also have ' + have + ')' : '') + now;
+              why.textContent = 'needs ' + target + (have ? ' (also have ' + have + ')' : '');
             }
           }
           if (!sdone && target && missing.indexOf(target) < 0) missing.push(target);
