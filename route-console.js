@@ -4,8 +4,12 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-07.14';
+  const RC_VERSION = '2026-10-07.15';
   const DATA = window.ROUTE_DATA;
+  // archived 72-chain route = the "explore" level-select (route-data-explore.js).
+  // when the file is missing the panel shows a loud red restore line, never silence.
+  const EXPLORE = window.ROUTE_EXPLORE_DATA || null;
+  const exploreOk = !!(EXPLORE && Array.isArray(EXPLORE.chains) && EXPLORE.chains.length);
   const root = document.createElement('div');
   root.id = 'rc-root';
   root.innerHTML =
@@ -135,6 +139,8 @@
   let filter = 'all';
   let prevChainDone = new Set();
   let prevStepDone = new Set();
+  let prevExploreDone = new Set();
+  let exploreSeeded = false;
   let toastTimer = 0;
   let lastErr = '';
 
@@ -382,7 +388,7 @@
       return;
     }
     const render = (items, kind) => items.map((it) => {
-      const covers = kind === 'chain' ? it.covers : [it.into];
+      const covers = (kind === 'chain' || kind === 'explore') ? it.covers : [it.into];
       return '<details class="rc-item" data-kind="' + kind + '" data-n="' + it.n + '">' +
         '<summary><span class="rc-mark" data-chain="' + kind + '-' + it.n + '">&#10003;</span>' +
         '<span class="rc-name">' + kind + ' ' + it.n + '</span>' +
@@ -397,13 +403,23 @@
         '</ol></details>';
     }).join('');
 
+    const exploreBlock = exploreOk
+      ? '<details class="rc-explore-group"><summary class="rc-title" style="padding:10px 4px 6px">explore &mdash; <span id="rc-explore-count"></span>/' +
+        EXPLORE.chains.length + ' chains, play any of them like levels (N walks the 100% route only)</summary>' +
+        render(EXPLORE.chains, 'explore') + '</details>'
+      : '<div class="rc-title" style="padding:10px 4px 6px;color:#ff6b6b">explore mode MISSING &mdash; route-data-explore.js did not load &middot; restore with ' +
+        '<b>git show 57c13f5:route-data.js &gt; route-data-explore.js</b> then rename the global to ROUTE_EXPLORE_DATA</div>';
+
     list.innerHTML =
-      '<div class="rc-title" style="padding:2px 4px 6px">setups — run 1&rarr;7, 7 last</div>' + render(DATA.setups, 'setup') +
-      '<div class="rc-title" style="padding:10px 4px 6px">chains</div>' + render(DATA.chains, 'chain');
+      '<div class="rc-title" style="padding:2px 4px 6px">setups — run 1&rarr;' + DATA.setups.length + ', ' + DATA.setups.length + ' last</div>' + render(DATA.setups, 'setup') +
+      '<div class="rc-title" style="padding:10px 4px 6px">chains</div>' + render(DATA.chains, 'chain') +
+      exploreBlock;
 
     list.querySelectorAll('li.rc-step').forEach((li) => li.addEventListener('click', () => {
       const kind = li.dataset.kind, n = +li.dataset.n, i = +li.dataset.i;
-      const item = (kind === 'chain' ? DATA.chains : DATA.setups).find((x) => x.n === n);
+      const src = kind === 'chain' ? DATA.chains : kind === 'explore' && EXPLORE ? EXPLORE.chains : DATA.setups;
+      const item = src && src.find((x) => x.n === n);
+      if (!item) { toast('row ' + kind + ' ' + n + ' has no matching data — route file out of sync', true); return; }
       jump(item.steps[i], null, !stepsBeforeDone(li, i));
     }));
     refresh();
@@ -646,6 +662,35 @@
         if (done && !prevChainDone.has(key) && prevChainDone.size) toast('chain ' + c.n + ' complete \u2713');
         done ? prevChainDone.add(key) : prevChainDone.delete(key);
       });
+
+      // the archived explore route ticks like a chain but never joins the stats bar (that
+      // stays the 100% route) and never toasts on the first pass — most explore chains are
+      // already covered, and dozens of "complete ✓" toasts at load would be garbage
+      if (exploreOk) {
+        let exploreDone = 0;
+        EXPLORE.chains.forEach((c) => {
+          const hits = c.covers.filter((x) => covered.has(x)).length;
+          const done = hits === c.covers.length;
+          if (done) exploreDone++;
+          const key = 'explore-' + c.n;
+          const mark = list.querySelector('.rc-mark[data-chain="' + key + '"]');
+          const meta = list.querySelector('[data-meta="' + key + '"]');
+          const box = list.querySelector('details[data-kind="explore"][data-n="' + c.n + '"]');
+          applySteps('explore', c);
+          if (mark) mark.classList.toggle('rc-hit', done);
+          if (meta) {
+            meta.textContent = hits + '/' + c.covers.length;
+            meta.title = done ? 'every segment this chain covers is in the save'
+              : 'still missing from the save: ' + c.covers.filter((x) => !covered.has(x)).join(', ');
+          }
+          if (box) box.classList.toggle('rc-done', done);
+          if (done && exploreSeeded && !prevExploreDone.has(key)) toast('explore chain ' + c.n + ' complete \u2713');
+          done ? prevExploreDone.add(key) : prevExploreDone.delete(key);
+        });
+        exploreSeeded = true;
+        const ec = root.querySelector('#rc-explore-count');
+        if (ec) ec.textContent = exploreDone;
+      }
 
       DATA.setups.forEach((s) => {
         const missing = applySteps('setup', s);
