@@ -166,6 +166,12 @@ isn't enterable. things that were fixed once and must stay fixed:
   (`playNextSegment` order: nextChoice → selfgroup → defaultNext).
 - impressions apply only when the segment was *played into*, never when seeked to
   (`momentStart(m, seeked)`).
+- `applyImpression` must tolerate `data` without a `persistent` block: 9 shipped choices carry
+  `{type:'userState', data:{}}` (SS21 `'PROGRAM & CONTROL'`, SS22 `"WHO'S THERE?"`, the
+  `EXIT TO CREDITS` trio, …). `Object.entries(undefined)` threw inside `playNextSegment`
+  **after** `nextChoice` was consumed, so the click cleared the button list, skipped the jump
+  and left the moment active — the choice looked dead ("i'm clicking it but the scene isn't
+  jumping"). keep the `|| {}` guard.
 - brute force over flag combinations must handle enum flags (`p_ps`, `p_vs`, `p_pc`), not only booleans.
 - `canEnter` must be driven by the *dynamic* predecessor (`defSrc` / `chSrc` / `grpSrc`), not the
   static `incoming` list — the static list contains unconditional `default` edges and lets you

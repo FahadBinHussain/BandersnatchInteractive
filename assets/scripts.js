@@ -789,7 +789,13 @@ function choice(choiceIndex) {
 
 function applyImpression(impressionData) {
 	if (impressionData && impressionData.type == 'userState') {
-		for (const [variable, value] of Object.entries(impressionData.data.persistent)) {
+		// 9 shipped choices carry {type:'userState', data:{}} (SS21 'PROGRAM & CONTROL',
+		// SS22 "WHO'S THERE?", ...). Object.entries(undefined) threw INSIDE
+		// playNextSegment after nextChoice was already consumed, so the click cleared
+		// the button list, skipped the jump and left the moment active — the choice
+		// looked dead. tolerate a missing persistent block.
+		var persistent = (impressionData.data && impressionData.data.persistent) || {};
+		for (const [variable, value] of Object.entries(persistent)) {
 			let key = "persistentState_" + variable;
 			console.log('persistentState set', variable, '=', value, '(was', key in ls ? ls[key] : 'unset', ')');
 			ls[key] = JSON.stringify(value);
