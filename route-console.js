@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-05.8';
+  const RC_VERSION = '2026-10-07.9';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -157,6 +157,19 @@
       if (src) out.add(src);
     }
     return out;
+  }
+
+  // why a chain can tick every step yet show N/M: a seek target only enters the save
+  // as the first-entry VALUE of the segment you land from it, and breadcrumb values are
+  // write-once — if that segment was first entered elsewhere (chain 14: R1 came from 5QA),
+  // the planned value-write is frozen out forever. a later chain landing something fresh
+  // FROM the seek target still counts it. name the real culprit instead of a bare 2/3.
+  function staleSeekWhy(seg, nextSeg, covered) {
+    if (!nextSeg || !covered.has(nextSeg)) return '';
+    const came = localStorage.getItem('breadcrumb_' + nextSeg);
+    if (!came || came === seg) return '';
+    return ' — ' + seg + ' was only seeked: ' + nextSeg + ' first came from ' + came +
+      ' (write-once, a fresh landing FROM ' + seg + ' in a later chain still counts it)';
   }
 
   function fmt(v) {
@@ -568,11 +581,21 @@
         const mark = list.querySelector('.rc-mark[data-chain="' + key + '"]');
         const meta = list.querySelector('[data-meta="' + key + '"]');
         const box = list.querySelector('details[data-kind="chain"][data-n="' + c.n + '"]');
-        const missing = applySteps('chain', c);
+        applySteps('chain', c);
         if (mark) mark.classList.toggle('rc-hit', done);
         if (meta) {
           meta.textContent = hits + '/' + c.covers.length;
-          meta.title = done ? 'every segment this chain covers is in the save' : 'still missing from the save: ' + missing.join(', ');
+          if (done) {
+            meta.title = 'every segment this chain covers is in the save';
+          } else {
+            const unc = c.covers.filter((x) => !covered.has(x));
+            let title = 'still missing from the save: ' + unc.join(', ');
+            for (const x of unc) {
+              const si = c.steps.findIndex((st, i) => st.k === 'seek' && st.seg === x && i + 1 < c.steps.length);
+              if (si >= 0) title += staleSeekWhy(x, c.steps[si + 1].into, covered);
+            }
+            meta.title = title;
+          }
         }
         if (box) box.classList.toggle('rc-done', done);
         if (done && !prevChainDone.has(key) && prevChainDone.size) toast('chain ' + c.n + ' complete \u2713');

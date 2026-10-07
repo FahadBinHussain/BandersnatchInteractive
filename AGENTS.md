@@ -21,13 +21,21 @@ otherwise the bash tool hangs on the inherited stdout pipe.
 - origin `http://127.0.0.1:8000`, keys in localStorage:
   - `breadcrumb_<SEGMENT>` — written by `playNextSegment` (`assets/scripts.js`, ~line 496) **only
     when playback naturally passes through that segment**. this is the coverage counter.
+    **values are write-once**: `breadcrumb_R1` remembers the segment you first entered `R1`
+    from, forever — if an unrelated watch beats the plan (chain 14 planned `SS2 → R1`, but
+    `R1` first landed from `5QA`), the planned value-write for the seek target (`SS2`) can
+    never happen on that trip. the target only counts when a later chain lands something
+    still-fresh FROM it; the chain's hover meta spells out the exact culprit.
   - `choice_*` / `persistentState_*` — the 62 state flags.
   - `place` — current segment, set by hash/seek jumps too.
 - **seeking, hash jumps and the seek bar write no breadcrumb.** a segment counts only if you
   actually watch through it. don't "verify" coverage by checking `place`.
 - dump the live save (needed by the planner): devtools → console →
   `copy(JSON.stringify({...Object.fromEntries(Object.entries(localStorage))}))`, paste to a json file.
-  keep dumps in `C:\tmp` (scratch), never commit them.
+  keep dumps in `C:\tmp` (scratch), never commit them. **or skip devtools**: `node tools/save-dump.js
+  <out.json>` decodes the save straight out of Edge's localStorage leveldb (fresh copy of the
+  profile's `Local Storage\leveldb` — snappy blocks, restart-array trailer, chromium's
+  `_origin\x00\x01<name>\x01<meta>` key framing) and writes the same flat json the planner reads.
 
 ## vocabulary
 
@@ -89,7 +97,10 @@ panic.
   that is still pending shows the exact missing segment in red (`needs 3AL`) and the setup meta
   lists what the save lacks, so "why is this pending" is always on screen. a `SEEK` step counts
   as done once the step after it landed — seeking writes nothing, and breadcrumb values are
-  write-once, so the seek target itself may never show up as a value. a step that lands through a
+  write-once, so the seek target itself may never show up as a value. when that happens the chain
+  shows `N/M` with every step ticked, and the hover title names the culprit (`SS2 was only seeked:
+  R1 first came from 5QA (write-once, a fresh landing FROM SS2 in a later chain still counts it)`).
+  a step that lands through a
   segment group (a group click, or any `let play` hop) carries that group's members + the shipped
   preconditions, evaluated live against `persistentState_*` with the same and/or/not/eql semantics
   as `preconditionToJS`: the row prints `flags ok, plays here`, `your flags send it to <other
