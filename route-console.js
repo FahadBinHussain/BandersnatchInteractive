@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-07.15';
+  const RC_VERSION = '2026-10-07.16';
   const DATA = window.ROUTE_DATA;
   // archived 72-chain route = the "explore" level-select (route-data-explore.js).
   // when the file is missing the panel shows a loud red restore line, never silence.
@@ -255,8 +255,18 @@
     }
     if (expr[0] === 'or') {
       // any ONE branch satisfies the or: while it fails, offer the atoms each branch is
-      // missing — pushing describeCond(or) itself would render "a & b|c" as dead text
-      if (!evalReq(expr, flags)) expr.slice(1).forEach((x) => failing(x, flags, out));
+      // missing — pushing describeCond(or) itself would render "a & b|c" as dead text.
+      // CHEAPEST branch first: a branch one flip from passing (3AC's `or(p_cm,p_ty)`) must
+      // surface before branches needing two flips, or the cap hides the chip that works
+      if (!evalReq(expr, flags)) {
+        const branches = expr.slice(1).map((x) => {
+          const cost = [];
+          failing(x, flags, cost);
+          return { x, cost: cost.length };
+        });
+        branches.sort((a, b) => a.cost - b.cost); // stable: ties keep shipped order
+        branches.forEach((b) => failing(b.x, flags, out));
+      }
       return;
     }
     if (!evalReq(expr, flags)) {
@@ -309,6 +319,31 @@
     }
     return '<button class="rc-fix" data-flag="' + esc(flag) + '" data-want="' + esc(want) + '" title="jump there and set ' +
       esc(flag) + '=' + esc(want) + '">' + esc(d) + ' &#8599;</button>';
+  }
+
+  // a list of fix descs as chips: every desc is relabelled to its ACTION (want=true -> flag,
+  // want=false -> !flag) so one flip can never appear twice as "p_lsd" AND "!p_lsd";
+  // stops that only exist via the 1A reset sink to the end (the reset is never the headline),
+  // and the result is capped — same action dedupes before the cap, so the cap can't hide
+  // duplicate-looking chips while a real fix waits behind them
+  function fixList(descs, fl, cap, sep) {
+    const seen = new Map();
+    descs.forEach((d) => {
+      const m = /^(!?)([A-Za-z0-9_]+)(?:=(.+))?$/.exec(d);
+      if (!m) { if (!seen.has(d)) seen.set(d, d); return; }
+      const flag = m[2];
+      const want = m[3] !== undefined ? m[3] : String(!fl[flag]);
+      const label = m[3] !== undefined ? flag + '=' + m[3] : (want === 'true' ? flag : '!' + flag);
+      const key = flag + '=' + want;
+      if (!seen.has(key)) seen.set(key, label);
+    });
+    const items = [...seen.entries()].map(([key, label]) => {
+      const i = key.indexOf('=');
+      const stop = DATA.stops && DATA.stops[key.slice(0, i)] && DATA.stops[key.slice(0, i)][key.slice(i + 1)];
+      return { label, nuclear: !stop || stop.every((s) => s.nuclear) };
+    });
+    items.sort((a, b) => (a.nuclear === b.nuclear ? 0 : a.nuclear ? 1 : -1)); // stable
+    return items.slice(0, cap).map((x) => fixChip(x.label, fl)).join(sep || ' ');
   }
 
   function flagsFor(step) {
@@ -522,7 +557,7 @@
                 '" data-force="1" title="the 1A reset clears every flag in the save">do it anyway &#8599;</button></div>';
             }
             return '<div class="rc-reject">' + stopLine(s, true) + ' &middot; ' + (fits[k].why || '') +
-              (fits[k].miss && fits[k].miss.length ? ' &middot; fix ' + fits[k].miss.slice(0, 3).map((d) => fixChip(d, fl)).join(' ') : '') +
+              (fits[k].miss && fits[k].miss.length ? ' &middot; fix ' + fixList(fits[k].miss, fl, 4) : '') +
               '</div>';
           }).join('');
         doEl.classList.add('rc-on');
@@ -599,19 +634,19 @@
                   const beat = [];
                   beatItems(landed.req, beat);
                   msg += ' (' + esc(target) + ' matches too, but an earlier member wins)';
-                  if (beat.length) msg += ' · make ' + esc(landed.seg) + ' lose: ' + beat.slice(0, 3).map((d) => fixChip(d, fl)).join(' or ');
+                  if (beat.length) msg += ' · make ' + esc(landed.seg) + ' lose: ' + fixList(beat, fl, 4, ' or ');
                 } else {
                   // diverted AND the target itself does not pass yet: say what the target needs
                   const miss = [];
                   if (tgt) failing(tgt.req, fl, miss);
-                  if (miss.length) msg += ' · fix ' + miss.slice(0, 4).map((d) => fixChip(d, fl)).join(' ');
+                  if (miss.length) msg += ' · fix ' + fixList(miss, fl, 6);
                 }
               } else if (landed) {
                 msg += st.k === 'click' ? ' · flags ok, click lands here' : ' · flags ok, plays here';
               } else {
                 const miss = [];
                 if (tgt) failing(tgt.req, fl, miss);
-                if (miss.length) msg += ' · fix ' + miss.slice(0, 4).map((d) => fixChip(d, fl)).join(' ');
+                if (miss.length) msg += ' · fix ' + fixList(miss, fl, 6);
                 else msg += st.fallback ? ' · no member matches, goes to ' + esc(st.fallback) : ' · no member matches your flags';
               }
               // live flag values: "why" is decided by these, so they are on the row itself

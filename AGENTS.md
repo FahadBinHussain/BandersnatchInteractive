@@ -156,6 +156,13 @@ panic.
   dotted `rc-nostop` span, never a dead button. a `not(and(…))` blocker (`fix !p_pr &
   p_s3af`) renders as **one chip per leg** — breaking any single leg flips the compound, and
   the compound string itself can't match the one-flag chip regex (it used to be dead text).
+  fix LISTS (`fixList`) are ordered + deduped: `failing()` walks `or(...)` branches
+  cheapest-first (a branch one flip from passing must surface before two-flip branches —
+  chain 7's `3AC` row hid `p_cm`/`p_ty` behind `slice(0,4)` while all four visible chips
+  landed the wrong segment: `p_3aj→3AB2`, `lsd=0→3AH`), every chip is relabelled to its
+  ACTION (`p_lsd` and `!p_lsd` were the same flip shown twice, reading as a contradiction),
+  stops that only exist via the 1A reset sink to the end, and the cap applies AFTER dedupe
+  so duplicates can't crowd a real fix out of the visible slots.
   capture-phase listener: the chips sit inside
   clickable step rows AND inside the dismissable banner, so the chip handler must
   `stopPropagation` before the row's jump handler / banner dismiss runs.
