@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-07.16';
+  const RC_VERSION = '2026-10-07.17';
   const DATA = window.ROUTE_DATA;
   // archived 72-chain route = the "explore" level-select (route-data-explore.js).
   // when the file is missing the panel shows a loud red restore line, never silence.

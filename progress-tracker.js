@@ -23,20 +23,30 @@
       }
     }
 
+    // only moments Netflix registered in choicePoints can EVER count — the other 28
+    // shipped choice-moments (EXIT TO CREDITS split-screens, GO BACK, the 2B "NO"s)
+    // have no registered id, so counting them in the denominator made 174/174
+    // impossible by construction (the row sat at 83% forever after a complete route)
     let totalChoices = 0;
     let reachedChoices = 0;
+    let uncountable = 0;
+    let unreachableChoices = 0;
+    // documented ceiling (AGENTS.md "ceiling: 249 / 250"): Z61d's precondition chain is
+    // blocked — its choice counts in the universe but can never be reached
+    const unreachableSegs = ['Z61d'];
 
     for (let segId in momentsBySegment) {
       let moments = momentsBySegment[segId] || [];
       for (let i = 0; i < moments.length; i++) {
         let m = moments[i];
         if (m.choices && m.choices.length > 0) {
-          totalChoices++;
-          let reached = false;
           if (m.id && choicePoints[m.id]) {
-            reached = visitedSegments.has(segId);
+            totalChoices++;
+            if (unreachableSegs.indexOf(segId) >= 0) unreachableChoices++;
+            else if (visitedSegments.has(segId)) reachedChoices++;
+          } else {
+            uncountable++;
           }
-          if (reached) reachedChoices++;
         }
       }
     }
@@ -54,7 +64,8 @@
       segPct: totalSegments ? Math.round((visitedSegments.size / totalSegments) * 100) : 0,
       totalChoices,
       reachedChoices,
-      choicePct: totalChoices ? Math.round((reachedChoices / totalChoices) * 100) : 0,
+      uncountable,
+      choicePct: Math.round((reachedChoices / Math.max(1, totalChoices - unreachableChoices)) * 100),
       totalStates,
       setStates,
       statePct: totalStates ? Math.round((setStates / totalStates) * 100) : 0,
@@ -100,7 +111,7 @@
       '\nSegments   ' + bar(p.segPct, 18) + '\n' +
       '  ' + p.visited + ' / ' + p.totalSegments + '\n' +
       '\nChoices    ' + bar(p.choicePct, 18) + '\n' +
-      '  ' + p.reachedChoices + ' / ' + p.totalChoices + '\n' +
+      '  ' + p.reachedChoices + ' / ' + p.totalChoices + (p.uncountable ? '  (+' + p.uncountable + ' can never count)' : '') + '\n' +
       '\nStates     ' + bar(p.statePct, 18) + '\n' +
       '  ' + p.setStates + ' / ' + p.totalStates + '\n' +
       '\nrefresh: ' + INTERVAL + 'ms | ` to hide';

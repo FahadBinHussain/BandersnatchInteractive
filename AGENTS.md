@@ -171,8 +171,13 @@ panic.
   numbers) and
   `index6.html` (ranked stops: shape, loud no-fit + guided-recovery chip, guard-aware pick).
 - `progress-tracker.js` — backtick toggles the stats overlay. trust the **segments** and
-  **choice-points** rows. the **states** row is broken (it counts every key including absent
-  ones, so it always reads 100%) — don't report it as real.
+  **choice-points** rows. choices count only moments registered in Netflix's `choicePoints`
+  metadata (146 of the 174 shipped choice-moments — the other 28, EXIT TO CREDITS
+  split-screens / GO BACK / the 2B "NO"s, have no registered id and can never count, so they
+  are excluded from the denominator and footnoted `+28 can never count`). the pct excludes
+  the documented Z61d ceiling: a complete save reads `145 / 146 (+28 can never count)` at
+  100%. the **states** row is broken (presence check on the 62 keys, so it always reads 100%)
+  — don't report it as real.
 
 keys `C` / `N` / backtick are registered with `addEventListener`, so they don't collide with the
 player's `document.onkeypress` bindings (F, R, K, J, L, Space, arrows).
