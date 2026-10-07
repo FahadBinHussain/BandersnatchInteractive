@@ -64,11 +64,12 @@ rules the route follows:
    segment's last frame — seeking exactly there can make the player treat you as the outgoing
    segment and fire *its* choice, sending you somewhere else entirely). after that it's pure
    playback — no more seeking until the next chain.
-2. **setups run 1 → 7, setup 7 last.** setups 1, 2 and 7 start at `1A` / 0:00, and the intro's
+2. **setups run in order, last one last.** setups start at `1A` / 0:00, and the intro's
    reset moment wipes state flags — so the last setup run decides the flag state everything
    after it expects. running them out of order silently breaks later chains.
-3. chains 22/27/38/40/41/44/47/50/52/55/58 also begin `SEEK 1A → 0:00` on purpose: the reset
-   is what makes their flag combination enterable.
+3. some chains also begin `SEEK 1A → 0:00` on purpose: the reset is what makes their flag
+   combination enterable. chain numbers are re-generated on every replan — trust the current
+   `ROUTE.md` / panel order, never a remembered chain number.
 4. the video clock jumps between segments (8L ends 55:28 → next hop starts 4:33:45 → the one
    after that is back at 36:01). that's normal, those are segment-group hops.
 5. a step's timestamp is the **segment start**, not the moment the buttons appear — the choice
@@ -149,7 +150,8 @@ panic.
   capture-phase listener: the chips sit inside
   clickable step rows AND inside the dismissable banner, so the chip handler must
   `stopPropagation` before the row's jump handler / banner dismiss runs.
-  headless coverage: `C:\tmp\rctest\index5.html` (chips, banner, goto, nuclear) and
+  headless coverage: `C:\tmp\rctest\index5.html` (chips, banner, goto, nuclear, per-leg
+  compound fix hints — row lookups are plan-agnostic, never chain numbers) and
   `index6.html` (ranked stops: shape, loud no-fit + guided-recovery chip, guard-aware pick).
 - `progress-tracker.js` — backtick toggles the stats overlay. trust the **segments** and
   **choice-points** rows. the **states** row is broken (it counts every key including absent

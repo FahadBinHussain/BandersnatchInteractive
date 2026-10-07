@@ -352,7 +352,7 @@ const chainsData = chains.map((c, i) => {
   return { n: i + 1, covers: [...new Set(c.covers)], steps: c.steps.map(stepData).filter(Boolean) };
 });
 lines.push('');
-lines.push(`STATE SETUP - ${rep.length} of these. Run them 1 -> 7, setup 7 last (they start at 1A and wipe state flags, so the last one run decides the flag state later chains expect).`);
+lines.push(`STATE SETUP - ${rep.length} of these. Run them 1 -> ${rep.length}, setup ${rep.length} last (they start at 1A and wipe state flags, so the last one run decides the flag state later chains expect).`);
 const setupsData = rep.map((r, i) => {
   const seg = r.steps[0].split(/\s*→\s*/)[0].split(/\s+/)[1];
   lines.push(`   setup ${i + 1} -> ends in ${r.into}: ` + fmtSeq(['SEEK ' + seg + ' at ' + fmtMs(seekMs(seg)), ...r.steps]).join('  →  '));

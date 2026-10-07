@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-07.13';
+  const RC_VERSION = '2026-10-07.14';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -247,6 +247,12 @@
       expr.slice(1).forEach((x) => failing(x, flags, out));
       return;
     }
+    if (expr[0] === 'or') {
+      // any ONE branch satisfies the or: while it fails, offer the atoms each branch is
+      // missing — pushing describeCond(or) itself would render "a & b|c" as dead text
+      if (!evalReq(expr, flags)) expr.slice(1).forEach((x) => failing(x, flags, out));
+      return;
+    }
     if (!evalReq(expr, flags)) {
       // not(and(X, Y)) fails while the AND holds: breaking ANY single leg flips it back,
       // so push one chip per leg — a compound "!p_pr & p_s3af" never matches fixChip's
@@ -254,6 +260,15 @@
       if (expr[0] === 'not' && Array.isArray(expr[1]) && expr[1][0] === 'and') {
         expr[1].slice(1).forEach((leg) => {
           const d = describeCond(leg);
+          if (out.indexOf(d) < 0) out.push(d);
+        });
+        return;
+      }
+      // not(or(...)) fails while any atom holds: each TRUE atom is a flip-away chip
+      if (expr[0] === 'not' && Array.isArray(expr[1]) && expr[1][0] === 'or') {
+        expr[1].slice(1).forEach((atom) => {
+          if (!evalReq(atom, flags)) return;
+          const d = describeCond(atom);
           if (out.indexOf(d) < 0) out.push(d);
         });
         return;
