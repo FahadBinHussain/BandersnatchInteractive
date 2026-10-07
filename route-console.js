@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-07.9';
+  const RC_VERSION = '2026-10-07.10';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -170,6 +170,15 @@
     if (!came || came === seg) return '';
     return ' — ' + seg + ' was only seeked: ' + nextSeg + ' first came from ' + came +
       ' (write-once, a fresh landing FROM ' + seg + ' in a later chain still counts it)';
+  }
+
+  // a jump is only "mid-route" (red, impressions skipped) when an EARLIER step of the same
+  // chain is still pending. if every step before it already landed, stepping to this row is
+  // STARTING the next step, not hopping into the middle of a route — warning there reads as
+  // "you are not allowed to start chains" and stops the user cold.
+  function stepsBeforeDone(li, i) {
+    const prev = i <= 0 || !li.parentElement ? [] : Array.prototype.slice.call(li.parentElement.children, 0, i);
+    return prev.every((x) => x.classList.contains('rc-step-done'));
   }
 
   function fmt(v) {
@@ -370,7 +379,7 @@
     list.querySelectorAll('li.rc-step').forEach((li) => li.addEventListener('click', () => {
       const kind = li.dataset.kind, n = +li.dataset.n, i = +li.dataset.i;
       const item = (kind === 'chain' ? DATA.chains : DATA.setups).find((x) => x.n === n);
-      jump(item.steps[i], null, i > 0);
+      jump(item.steps[i], null, !stepsBeforeDone(li, i));
     }));
     refresh();
   }
@@ -651,7 +660,7 @@
         det.open = true;
         li.scrollIntoView({ block: 'center', behavior: 'smooth' });
         const st = g.it.steps[+li.dataset.i];
-        jump(st, 'next pending: ' + g.kind + ' ' + g.it.n + ' step ' + (+li.dataset.i + 1), +li.dataset.i > 0);
+        jump(st, 'next pending: ' + g.kind + ' ' + g.it.n + ' step ' + (+li.dataset.i + 1), !stepsBeforeDone(li, +li.dataset.i));
         return;
       }
     }

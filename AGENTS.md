@@ -113,7 +113,10 @@ panic.
   the build stamp — if it isn't the newest, the browser is serving a cached copy (hard reload).
   **N** jumps to the next pending step. clicking any step seeks the player to that step's
   seek-safe time (segment start +3s, clamped before interior impression moments); a jump into
-  the middle of a route warns in red, because the impressions before that point are skipped.
+  the middle of a route warns in red **only when an earlier step of that chain is still pending**
+  — that is when impressions are genuinely skipped. a prefix of done steps means you are starting
+  the next step, not hopping (the old `i > 0` rule fired red on every chain whose step 0 was
+  already ticked, and read as "i can't start chains").
   a seek writes no progress — coverage only comes from watching through a segment.
   the `fix <flag>` hints are **buttons**: clicking one fills the amber banner with the full stop
   (`jump 7H at 1:51:42 · click "KARATE CHOP DAD" at 1:51:55 → 7K · also sets p_np`), dismiss on
