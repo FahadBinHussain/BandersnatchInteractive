@@ -143,7 +143,10 @@ panic.
   because breaking any single one lets the target win the group; rows show the same hint after
   `(target matches too, but an earlier member wins)`. the 1A reset shows its red `INTRO RESET — wipes
   EVERY state flag` line because it clears your whole save. a hint with no known stop renders as a
-  dotted `rc-nostop` span, never a dead button. capture-phase listener: the chips sit inside
+  dotted `rc-nostop` span, never a dead button. a `not(and(…))` blocker (`fix !p_pr &
+  p_s3af`) renders as **one chip per leg** — breaking any single leg flips the compound, and
+  the compound string itself can't match the one-flag chip regex (it used to be dead text).
+  capture-phase listener: the chips sit inside
   clickable step rows AND inside the dismissable banner, so the chip handler must
   `stopPropagation` before the row's jump handler / banner dismiss runs.
   headless coverage: `C:\tmp\rctest\index5.html` (chips, banner, goto, nuclear) and

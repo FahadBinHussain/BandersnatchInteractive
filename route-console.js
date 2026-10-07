@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-07.12';
+  const RC_VERSION = '2026-10-07.13';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -248,6 +248,16 @@
       return;
     }
     if (!evalReq(expr, flags)) {
+      // not(and(X, Y)) fails while the AND holds: breaking ANY single leg flips it back,
+      // so push one chip per leg — a compound "!p_pr & p_s3af" never matches fixChip's
+      // one-flag regex and used to render as dead text
+      if (expr[0] === 'not' && Array.isArray(expr[1]) && expr[1][0] === 'and') {
+        expr[1].slice(1).forEach((leg) => {
+          const d = describeCond(leg);
+          if (out.indexOf(d) < 0) out.push(d);
+        });
+        return;
+      }
       const d = describeCond(expr);
       if (out.indexOf(d) < 0) out.push(d);
     }
