@@ -78,14 +78,32 @@ rules the route follows:
    drops that moment's state impression when you seek into it, so you'd land in the segment
    with the wrong flags. seek to the segment start and watch in.
 
-## ceiling: 249 / 250
+## ceiling: 249 / 250 natural — `Z61d` HAS a 5-step seek trip
 
-`Z61d` is unreachable. it is only entered by `SS54 → choice WhoThere-SS54`, which requires
-`p_bup && p_s3af && p_cd && p_vs==='k' && !p_pr && !p_2b`. `p_pr` and `p_2b` are only cleared
-by the `1A` intro reset, which also clears `p_s3af`, and `p_s3af` can only be set again from
-`PACStudyChoice` / `R6` — a blocked search from `1A` (blacklisting `2B*`, `6A`) reaches none of
-them. so 249 is the real max, and it's fine: `Z61d` must stay out of any "why is it not 250"
+`Z61d` cannot be *walked into*: it is only entered by `SS54 → choice WhoThere-SS54`, which
+requires `p_bup && p_s3af && p_cd && p_vs==='k' && !p_pr && !p_2b`. `p_pr` and `p_2b` are only
+cleared by the `1A` intro reset, which also clears `p_s3af`, and `p_s3af` can only be set again
+from `PACStudyChoice` / `R6` — a blocked search from `1A` (blacklisting `2B*`, `6A`) reaches none
+of them, so the planner will never plan it and `Z61d` must stay out of any "why is it not 250"
 panic.
+
+**but the save can still record it** — flag trips are plain seeks, and a completed route ends
+post-reset (`p_pr=0 p_2b=0`), so the other four flags can be stacked without ever touching
+`pr`/`2b`. five seek+click steps, address-bar `#t<seconds>` seeks (all windows 13–25s; moments
+with `disableImmediateSceneTransition` jump when the window closes, `SS54` jumps immediately;
+too slow = redo just that step, nothing breaks):
+
+1. `#t14431` (4:00:31, `ZK3`) → click **PAC** → `p_s3af=1`, lands `3AF1` (no impressions)
+2. `#t3372` (0:56:12, `3Nx`) → click **COLIN** → lands `3Q` → rel-0 impression `p_cd=1`
+3. `#t3780` (1:03:00, `5QA`) → click **YES** (NO works too) → `p_vs='k'`, lands `5UA` (no moments)
+4. `#t3890` (1:04:50, `5AD`) → click **NO IDEA** → lands `5AF` → rel-0 impression `p_bup=1`
+5. `#t16735` (4:38:55, `SS54`) → click **WHO'S THERE?** → group order: Z61a/b/c fail
+   (2b=0 / cd&k), **Z61d passes first** → `breadcrumb_Z61d` written → 250/250 + 146/146
+
+no trip crosses `6A` (sets `p_pr`) or `2B*` (sets `p_2b`); landings are impression-clean
+(`3AF1`/`5UA` none, `3Q`/`5AF` only the flags we want); the click's own `p_bup=false` applies
+*after* the group resolves (`playNextSegment` resolves nextChoice → impression), so it cannot
+spoil the landing. verify with the backtick overlay: `250 / 250` + `146 / 146`.
 
 ## route console + progress overlay (both in-page now)
 
@@ -174,10 +192,11 @@ panic.
   **choice-points** rows. choices count only moments registered in Netflix's `choicePoints`
   metadata (146 of the 174 shipped choice-moments — the other 28, EXIT TO CREDITS
   split-screens / GO BACK / the 2B "NO"s, have no registered id and can never count, so they
-  are excluded from the denominator and footnoted `+28 can never count`). the pct excludes
-  the documented Z61d ceiling: a complete save reads `145 / 146 (+28 can never count)` at
-  100%. the **states** row is broken (presence check on the 62 keys, so it always reads 100%)
-  — don't report it as real.
+  are excluded from the denominator and footnoted `+28 can never count`). the pct excludes the
+  documented Z61d ceiling while it is unvisited: a route-complete save reads `145 / 146 (+28
+  can never count)` at 100%, and after the Z61d seek trip above it reads `146 / 146`. the
+  **states** row is broken (presence check on the 62 keys, so it always reads 100%) — don't
+  report it as real.
 
 keys `C` / `N` / backtick are registered with `addEventListener`, so they don't collide with the
 player's `document.onkeypress` bindings (F, R, K, J, L, Space, arrows).

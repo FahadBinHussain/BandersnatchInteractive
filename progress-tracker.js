@@ -31,8 +31,9 @@
     let reachedChoices = 0;
     let uncountable = 0;
     let unreachableChoices = 0;
-    // documented ceiling (AGENTS.md "ceiling: 249 / 250"): Z61d's precondition chain is
-    // blocked — its choice counts in the universe but can never be reached
+    // documented ceiling (AGENTS.md "ceiling: 249 / 250"): Z61d's natural entry is a flag
+    // deadlock, so while it is unvisited it stays out of the denominator (145/145 = 100%);
+    // the AGENTS Z61d seek trip can still record it, and then the count stands alone (146/146)
     const unreachableSegs = ['Z61d'];
 
     for (let segId in momentsBySegment) {
@@ -42,8 +43,8 @@
         if (m.choices && m.choices.length > 0) {
           if (m.id && choicePoints[m.id]) {
             totalChoices++;
-            if (unreachableSegs.indexOf(segId) >= 0) unreachableChoices++;
-            else if (visitedSegments.has(segId)) reachedChoices++;
+            if (visitedSegments.has(segId)) reachedChoices++;
+            else if (unreachableSegs.indexOf(segId) >= 0) unreachableChoices++;
           } else {
             uncountable++;
           }
