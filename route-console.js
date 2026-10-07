@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-07.10';
+  const RC_VERSION = '2026-10-07.11';
   const DATA = window.ROUTE_DATA;
   const root = document.createElement('div');
   root.id = 'rc-root';
@@ -403,7 +403,18 @@
   function stopLine(s, noGrp) {
     const startOf = (x) => (window.segmentMap && segmentMap.segments[x] ? segmentMap.segments[x].startTimeMs : null);
     let l = 'jump <b>' + esc(s.seg) + '</b> at ' + fmt(s.at);
-    if (s.click) l += ' &middot; click <b>&quot;' + esc(s.click) + '&quot;</b> at ' + fmt(s.clickAt);
+    if (s.click) {
+      // show the REAL click window, and name what the moment's default fires if you miss it —
+      // a jump lands you mid-window, and an unclicked default auto-fires at the segment end
+      // (SS21's PAC window is 4:35:25-4:35:54 and the default is [KILL DAD] -> 5H)
+      const segMoments = (window.momentsBySegment || {})[s.seg] || [];
+      const mom = segMoments.find((x) => x.startMs === s.clickAt && (x.choices || []).some((cc) => cc.text === s.click));
+      const dci = mom && mom.choices[mom.defaultChoiceIndex];
+      const diverts = !!(dci && dci.segmentId && s.dest && dci.segmentId !== s.dest);
+      l += ' &middot; click <b>&quot;' + esc(s.click) + '&quot;</b> ' +
+        (mom ? fmt(s.clickAt) + '&ndash;' + fmt(mom.endMs) : 'at ' + fmt(s.clickAt)) +
+        (diverts ? ' <span class="rc-warn">miss it and <b>[' + esc(dci.text) + ']</b> fires &rarr; ' + esc(dci.segmentId) + '</span>' : '');
+    }
     if (s.hopEnd) l += ' &middot; watch to ' + fmt(s.hopEnd);
     if (s.dest) {
       // a merged trip serves every flag-writing landing: show them all, not just the first
