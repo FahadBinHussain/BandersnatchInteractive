@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const RC_VERSION = '2026-10-07.18';
+  const RC_VERSION = '2026-10-07.19';
   const DATA = window.ROUTE_DATA;
   // archived 72-chain route = the "explore" level-select (route-data-explore.js).
   // when the file is missing the panel shows a loud red restore line, never silence.
@@ -411,7 +411,8 @@
     if (st.k === 'seek') return 'jump to <em>' + st.seg + '</em>';
     if (st.k === 'click') {
       const when = st.choiceAt !== null && st.choiceAt !== undefined ? ' <i>buttons ' + fmt(st.choiceAt) + '</i>' : '';
-      return 'click <em>&quot;' + st.label + '&quot;</em> ' + when + ' &rarr; ' + st.into;
+      const sets = st.flag ? ' <i>&middot; sets ' + st.flag + (st.want !== undefined ? '=' + st.want : '') + '</i>' : '';
+      return 'click <em>&quot;' + st.label + '&quot;</em> ' + when + ' &rarr; ' + st.into + sets;
     }
     return 'watch <em>' + st.seg + '</em> &rarr; ' + st.into;
   }
@@ -604,6 +605,14 @@
       const applySteps = (kind, it) => {
         const missing = [];
         const flags = it.steps.map((st) => {
+          // a flag-stacking step lands on an already-covered segment — the click's job is
+          // the state flag, so tick it on the live value (Z61d trip steps carry flag/want)
+          if (st.flag) {
+            const v = localStorage.getItem('persistentState_' + st.flag);
+            let j = null;
+            try { j = JSON.parse(v); } catch (e) { j = v; }
+            return st.want === undefined ? !!j : j === st.want;
+          }
           const t = st.k === 'seek' ? st.seg : st.into;
           return !!t && covered.has(t);
         });
@@ -618,7 +627,11 @@
           const why = list.querySelector('[data-why="' + kind + '-' + it.n + '-' + i + '"]');
           if (why) {
             if (sdone) why.textContent = '';
-            else if (st.group && st.group.length) {
+            else if (st.flag) {
+              // pending flag step: the landing is covered, the state value is the whole job
+              why.textContent = 'needs ' + st.flag + (st.want !== undefined ? '=' + st.want : '') +
+                ' — this click sets it';
+            } else if (st.group && st.group.length) {
               // the destination resolves through a segment group: the player takes the FIRST
               // member that matches, so a target that matches can still lose to an earlier one
               const fl = flagsFor(st);

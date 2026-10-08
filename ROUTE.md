@@ -1,6 +1,6 @@
 # bandersnatch 100% route
 
-233 -> 249 / 250 segments, 145 / 174 choice points.
+233 -> 250 / 250 segments, 146 / 174 choice points.
 
 A chain starts with SEEK <segment> at <time> (hash jump, writes no progress). The seek time sits a few seconds INSIDE the segment: the first frame of a segment is also the last frame of the previous one, and seeking exactly there can make the player treat you as the outgoing segment and fire its choice. Same trap if a seek moves less than 2 seconds: scripts.js only counts a jump of >= 2000ms as a seek, so a 1s nudge runs the outgoing segment transition instead — always jump from far away, never nudge. Everything after the first hop is normal playback: watch until the listed timestamp, then either click the named choice or let it play. Timestamps are absolute video time and mark the **start of the segment** — then keep watching: the buttons appear later, at the `[choice at H:MM:SS]` marker (seeking straight to that moment would skip its state impression).
 
@@ -22,6 +22,8 @@ chain 8 [covers: SS2]
    SEEK 8L at 54:17  →  54:17  8L → let play (segment group) → SS2
 chain 9 [covers: 3AJ2]
    SEEK ZQ at 3:31:12  →  3:31:12  ZQ → CLICK "PICK UP FAMILY PHOTO" [choice at 3:31:47] → 3AJ2
+chain 10 [covers: Z61d]
+   SEEK ZK3 at 4:00:14  →  4:00:14  ZK3 → CLICK "PAC" [choice at 4:00:30] → 3AF1  →  SEEK 3Nx at 56:02  →  55:59  3Nx → CLICK "COLIN" [choice at 56:10] → 3Q  →  SEEK 5QA at 1:02:31  →  1:02:28  5QA → CLICK "YES" [choice at 1:02:59] → 5UA  →  SEEK 5AD at 1:03:54  →  1:03:51  5AD → CLICK "NO IDEA" [choice at 1:04:47] → 5AF  →  SEEK SS54 at 4:38:52  →  4:38:49  SS54 → CLICK "WHO'S THERE?" [choice at 4:38:51] → Z61d
 
 STATE SETUP - 3 of these. Run them 1 -> 3, setup 3 last (they start at 1A and wipe state flags, so the last one run decides the flag state later chains expect).
    setup 1 -> ends in 1D: SEEK 1A at 0:03  →  0:03  1A → CLICK "FROSTIES" [choice at 2:16] → 1D

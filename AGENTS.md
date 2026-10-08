@@ -44,13 +44,14 @@ otherwise the bash tool hangs on the inherited stdout pipe.
 | segment | one chunk of film (`5AF` = 1:05:03 → 1:06:22). 250 total. times come from `assets/SegmentMap.js` (`startTimeMs` / `endTimeMs`). |
 | choice point | one of the 174 clickable moments. |
 | state flag | one of 62 invisible booleans/enums in localStorage; gates which segments/groups you may enter. |
-| chain | a route: `SEEK x` (hash jump) → watch → click what the line says. one chain = the new segments it lists. the active plan ships 9 chains / 16 segments right now; the archived `explore` section keeps the original 72 chains / 146 segments as a level select. |
+| chain | a route: `SEEK x` (hash jump) → watch → click what the line says. one chain = the new segments it lists. the active plan ships 10 chains / 17 segments right now (9 planned + the fixed `Z61d` trip `mkchains.js` appends on every regen); the archived `explore` section keeps the original 72 chains / 146 segments as a level select. |
 | setup | same shape, but its job is flipping state flags. the active plan ships 3; later chains land in the wrong place without them. |
 
 ## the route
 
-`ROUTE.md` is the answer file: 72 chains + 7 setups, arrow format, timestamps are absolute
-video time. regenerate with:
+`ROUTE.md` is the answer file: chains + setups in arrow format, timestamps are absolute
+video time (the current active plan ships 10 chains + 3 setups — chain numbers regenerate
+with the plan, and the `Z61d` trip is appended by `mkchains.js` on every run). regenerate with:
 
 ```
 node tools/route-planner.js <dump.json> > C:\tmp\plan.json
@@ -105,6 +106,14 @@ no trip crosses `6A` (sets `p_pr`) or `2B*` (sets `p_2b`); landings are impressi
 *after* the group resolves (`playNextSegment` resolves nextChoice → impression), so it cannot
 spoil the landing. verify with the backtick overlay: `250 / 250` + `146 / 146`.
 
+**it ships as the last chain in the panel**: `tools/mkchains.js` appends the trip on every
+regeneration (fixed data — a replan can never drop the 250th segment from the route), the
+ROUTE.md header counts `250 / 250` + `146 / 174` once appended, and the four flag steps carry
+`flag`/`want` in `route-data.js`: their landings are already covered, so the console ticks them
+on the live state value instead (`needs p_s3af — this click sets it`) and `N` walks the trip in
+order rather than jumping straight to the SS54 step. chain numbers still regenerate — find the
+trip by `covers: Z61d`, never by a remembered number.
+
 ## route console + progress overlay (both in-page now)
 
 `index.html` loads four scripts (no more devtools pasting):
@@ -128,6 +137,9 @@ spoil the landing. verify with the backtick overlay: `250 / 250` + `146 / 146`.
   write-once, so the seek target itself may never show up as a value. when that happens the chain
   shows `N/M` with every step ticked, and the hover title names the culprit (`SS2 was only seeked:
   R1 first came from 5QA (write-once, a fresh landing FROM SS2 in a later chain still counts it)`).
+  a step carrying `flag`/`want` in route-data (the `Z61d` trip's first four clicks) ticks on that
+  live `persistentState_*` value instead of a landing — the landing is already covered, the
+  click's job is the state flag — and its pending why reads `needs p_vs=k — this click sets it`.
   a step that lands through a
   segment group (a group click, or any `let play` hop) carries that group's members + the shipped
   preconditions, evaluated live against `persistentState_*` with the same and/or/not/eql semantics
@@ -249,7 +261,12 @@ not just whether the target's own precondition passes.
 `msedge.exe` is a launcher: `& $edge ... --dump-dom` returns as soon as the launcher exits, so the
 captured output is empty and every assert looks like a miss. run it with
 `Start-Process -FilePath $edge -ArgumentList @(...) -Wait -PassThru -NoNewWindow
--RedirectStandardOutput <file>` and read the file. always give it a fresh `--user-data-dir` (a
+-RedirectStandardOutput <file>` and read the file. `$edge` must be the FULL path — bare
+`Start-Process msedge` dies with "The system cannot find the file specified" (not on PATH);
+it lives at `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`. reusable wrapper:
+`pwsh C:\tmp\rctest\run-dom.ps1 -name <tag> -url <url> [-budget <ms>]` (fresh random
+`--user-data-dir` per run, regexes `data-out="[^"]*"`, HTML-decodes + cleans up). always give it
+a fresh `--user-data-dir` (a
 reused profile serves cached JS and the build stamp silently stays old) and point it at a scratch
 page — `C:\tmp\rctest\index2.html`, served on 8001 — that seeds `persistentState_*` keys, loads
 `route-data.js` + `route-console.js` from 8000, and writes the assert result into a `data-out`

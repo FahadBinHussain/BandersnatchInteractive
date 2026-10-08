@@ -351,6 +351,49 @@ const chainsData = chains.map((c, i) => {
   lines.push('   ' + fmtSeq(c.steps).join('  →  '));
   return { n: i + 1, covers: [...new Set(c.covers)], steps: c.steps.map(stepData).filter(Boolean) };
 });
+
+// the Z61d trip (AGENTS "ceiling"): the planner can never walk into Z61d — its four gating
+// flags only stack after the 1A reset, and the reset wipes p_s3af — but the save can still
+// record the landing. five seek+clicks, appended on EVERY run so a replan can never drop the
+// 250th segment out of the route. click rows carry `flag`/`want`: their landings are already
+// covered, so the console ticks them on the live state value instead.
+const Z61D_TRIP = [
+  { seg: 'ZK3',  label: 'PAC',          dest: '3AF1', flag: 'p_s3af' },
+  { seg: '3Nx',  label: 'COLIN',        dest: '3Q',   flag: 'p_cd' },
+  { seg: '5QA',  label: 'YES',          dest: '5UA',  flag: 'p_vs', want: 'k' },
+  { seg: '5AD',  label: 'NO IDEA',      dest: '5AF',  flag: 'p_bup' },
+  { seg: 'SS54', label: "WHO'S THERE?", dest: 'Z61d' },
+];
+const z61dRaw = [];
+for (const s of Z61D_TRIP) {
+  z61dRaw.push('SEEK ' + s.seg + ' at ' + fmtMs(seekMs(s.seg)));
+  z61dRaw.push(fmtMs(segments[s.seg].startTimeMs) + '  ' + s.seg + '  →  CLICK: ' + s.label + '  →  lands in ' + s.dest);
+}
+const z61dRows = [];
+Z61D_TRIP.forEach((s, i) => {
+  const seekRow = stepData(z61dRaw[i * 2]);
+  const clickRow = stepData(z61dRaw[i * 2 + 1]);
+  if (clickRow && s.flag) { clickRow.flag = s.flag; if (s.want !== undefined) clickRow.want = s.want; }
+  if (seekRow) z61dRows.push(seekRow);
+  if (clickRow) z61dRows.push(clickRow);
+});
+if (z61dRows.length !== Z61D_TRIP.length * 2) {
+  console.error('Z61d trip: expected ' + Z61D_TRIP.length * 2 + ' steps, got ' + z61dRows.length +
+    ' — a Z61D_TRIP label/segment no longer matches the shipped moments');
+  process.exit(1);
+}
+lines.push(`chain ${chainsData.length + 1} [covers: Z61d]`);
+lines.push('   ' + fmtSeq(z61dRaw).join('  →  '));
+chainsData.push({ n: chainsData.length + 1, covers: ['Z61d'], steps: z61dRows });
+// the ROUTE.md header counts the route as run: with the trip appended the plan lands all
+// 250 segments + the 146th registered choice point. only patch while Z61d is still fresh —
+// a dump taken AFTER the trip already reads 250/146 and must not double-count.
+if ((d.summary.stillFreshList || []).indexOf('Z61d') >= 0) {
+  d.summary.coveredAfter = d.summary.totalSegments;
+  d.summary.stillFresh = 0;
+  d.summary.stillFreshList = [];
+  d.summary.choicePointsAfter += 1;
+}
 lines.push('');
 lines.push(`STATE SETUP - ${rep.length} of these. Run them 1 -> ${rep.length}, setup ${rep.length} last (they start at 1A and wipe state flags, so the last one run decides the flag state later chains expect).`);
 const setupsData = rep.map((r, i) => {
