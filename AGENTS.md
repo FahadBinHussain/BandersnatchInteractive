@@ -275,8 +275,8 @@ body attribute for a regex.
 ## shipping
 
 commit + push after a task is done (rule: always push, then say you pushed). work happens on
-`main` — fork default since 2026-10-08, while upstream `mohetios/BandersnatchInteractive`
-still bases PRs on `master`. `add-video-seek-controls` is the head of upstream PR #55 and stays
-a mirror: push both together (`git push origin main main:add-video-seek-controls`) or PR #55
-silently stops tracking the work. route/doc changes go straight to `main`. no personal secrets,
+`master` — the fork's default branch (upstream bases its PRs on `master` too).
+`add-video-seek-controls` is the head of upstream PR #55 and stays
+a mirror: push both together (`git push origin master master:add-video-seek-controls`) or PR #55
+silently stops tracking the work. route/doc changes go straight to `master`. no personal secrets,
 no save dumps, no account tokens in the repo.
