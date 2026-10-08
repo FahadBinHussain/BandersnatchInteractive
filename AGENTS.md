@@ -275,8 +275,8 @@ body attribute for a regex.
 ## shipping
 
 commit + push after a task is done (rule: always push, then say you pushed). work happens on
-`master` — the fork's default branch (upstream bases its PRs on `master` too).
-`add-video-seek-controls` is the head of upstream PR #55 and stays
-a mirror: push both together (`git push origin master master:add-video-seek-controls`) or PR #55
-silently stops tracking the work. route/doc changes go straight to `master`. no personal secrets,
-no save dumps, no account tokens in the repo.
+`master` — the fork's default branch (upstream bases its PRs on `master` too). upstream PRs go
+from short-lived feature branches cut off `upstream/master` carrying ONLY that PR's commits
+(`seek-controls` = the one seek commit `d4fdaa6`, PR #57) — never open a PR from `master`
+itself, it carries the whole toolkit. route/doc changes go straight to `master`. no personal
+secrets, no save dumps, no account tokens in the repo.
